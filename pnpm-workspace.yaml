@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  "@prisma/engines": true
+  esbuild: true
+  prisma: true
+
+minimumReleaseAgeExclude:
+  - dotenv@18.0.0
+  - prettier@3.9.8
