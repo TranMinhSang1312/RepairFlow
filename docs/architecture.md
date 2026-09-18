@@ -98,7 +98,7 @@ flowchart LR
 | Database | PostgreSQL + Prisma | Quan hệ nghiệp vụ chặt, transaction tốt, migration dễ quản lý |
 | File | Object storage tương thích S3 | Ảnh thiết bị không làm phình database; hỗ trợ signed URL |
 | Job nền | PostgreSQL job/outbox ở MVP | Bớt một hạ tầng Redis; vẫn gửi thông báo và chạy AI ngoài request chính |
-| Auth | Dịch vụ auth quản lý sẵn hoặc JWT/refresh token do backend quản lý | Giảm rủi ro tự làm sai xác thực; backend vẫn sở hữu RBAC và tenant isolation |
+| Auth | Email/password, access JWT ngắn hạn và refresh session được hash do backend quản lý | Có contract rõ cho MVP; backend sở hữu RBAC, thu hồi session và tenant isolation |
 | Quan sát | Structured logs + error tracking + request ID | Lần được một thao tác từ API đến job/AI |
 
 Redis/BullMQ chỉ nên thêm khi lượng job lớn hoặc cần retry/throughput cao. Microservice chưa có lợi ở giai đoạn đầu.

@@ -1,0 +1,1063 @@
+openapi: 3.1.0
+info:
+  title: RepairFlow API
+  version: 0.1.0
+  description: Contract for the RepairFlow MVP. Staff endpoints require a bearer token and validated X-Shop-Id tenant selection.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /
+tags:
+  - name: Auth
+    description: Staff identity, sessions, and current memberships.
+  - name: Customers
+    description: Shop-scoped customer records.
+  - name: Devices
+    description: Customer devices and identifiers.
+  - name: Repair orders
+    description: Intake, assignment, workflow state, and media.
+  - name: Quotes
+    description: Versioned quotes and sending.
+  - name: Service
+    description: Diagnosis, work, quality control, handover, and warranty.
+  - name: Public portal
+    description: Customer-safe tracking and quote decisions through scoped tokens.
+  - name: AI
+    description: Optional asynchronous AI assistance.
+
+paths:
+  /api/v1/auth/register-owner:
+    post:
+      tags: [Auth]
+      summary: Register the first owner and shop
+      operationId: registerOwner
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterOwnerRequest'
+      responses:
+        '201':
+          description: Owner, shop, and initial branch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in with email and password
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh-session cookie
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh session and issue a new access token
+      operationId: refreshSession
+      security: []
+      responses:
+        '200':
+          description: Session rotated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current refresh session
+      operationId: logout
+      responses:
+        '204': {description: Logged out}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  /api/v1/me:
+    get:
+      tags: [Auth]
+      summary: Get the current user and active memberships
+      operationId: getMe
+      responses:
+        '200':
+          description: Current identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/CurrentUser'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  /api/v1/customers:
+    get:
+      tags: [Customers]
+      summary: Search customers in the active shop
+      operationId: listCustomers
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/Cursor'
+        - name: query
+          in: query
+          schema: {type: string, maxLength: 100}
+      responses:
+        '200':
+          description: Customer page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerListResponse'
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Customers]
+      summary: Create a customer
+      operationId: createCustomer
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateCustomerRequest'}
+      responses:
+        '201':
+          description: Customer created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CustomerResponse'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/customers/{customerId}/devices:
+    get:
+      tags: [Devices]
+      summary: List a customer's devices
+      operationId: listCustomerDevices
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Device'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      tags: [Devices]
+      summary: Create a device for a customer
+      operationId: createDevice
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateDeviceRequest'}
+      responses:
+        '201':
+          description: Device created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeviceResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders:
+    get:
+      tags: [Repair orders]
+      summary: List repair orders for the board
+      operationId: listRepairOrders
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/Cursor'
+        - name: query
+          in: query
+          schema: {type: string, maxLength: 100}
+        - name: status
+          in: query
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/RepairOrderStatus'}
+        - name: branchId
+          in: query
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - name: technicianUserId
+          in: query
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Repair-order page
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RepairOrderListResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Repair orders]
+      summary: Create an intake and receive a device
+      operationId: createRepairOrder
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateRepairOrderRequest'}
+      responses:
+        '201':
+          description: Repair order created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/media/presign:
+    post:
+      tags: [Repair orders]
+      summary: Create a short-lived unbound upload for intake media
+      operationId: presignIntakeMedia
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PresignMediaRequest'}
+      responses:
+        '201':
+          description: Signed upload for a provisional media asset
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PresignMediaResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders/{repairOrderId}:
+    get:
+      tags: [Repair orders]
+      summary: Get a repair-order workspace
+      operationId: getRepairOrder
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      responses:
+        '200':
+          description: Repair order
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/repair-orders/{repairOrderId}/media/presign:
+    post:
+      tags: [Repair orders]
+      summary: Create a short-lived signed upload request
+      operationId: presignOrderMedia
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PresignMediaRequest'}
+      responses:
+        '201':
+          description: Signed upload
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PresignMediaResponse'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders/{repairOrderId}/assignments:
+    post:
+      tags: [Repair orders]
+      summary: Assign or reassign the active technician
+      operationId: assignTechnician
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [technicianUserId]
+              properties:
+                technicianUserId: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '201': {description: Assignment created}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /api/v1/repair-orders/{repairOrderId}/transition:
+    post:
+      tags: [Repair orders]
+      summary: Execute a guarded state transition
+      operationId: transitionRepairOrder
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TransitionRepairOrderRequest'}
+      responses:
+        '200':
+          description: Transition complete
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /api/v1/repair-orders/{repairOrderId}/diagnoses:
+    post:
+      tags: [Service]
+      summary: Publish an append-only diagnosis revision
+      operationId: createDiagnosis
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateDiagnosisRequest'}
+      responses:
+        '201': {description: Diagnosis revision created}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /api/v1/repair-orders/{repairOrderId}/quotes:
+    post:
+      tags: [Quotes]
+      summary: Create the next draft quote version
+      operationId: createQuoteVersion
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateQuoteRequest'}
+      responses:
+        '201':
+          description: Draft quote created with server-calculated totals
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/QuoteResponse'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/quotes/{quoteVersionId}/send:
+    post:
+      tags: [Quotes]
+      summary: Freeze and send a quote version
+      operationId: sendQuote
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/QuoteVersionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                channel:
+                  type: string
+                  enum: [EMAIL, ZALO, SMS, COPY_LINK]
+      responses:
+        '200':
+          description: Quote frozen; notification queued or link returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [quote, publicUrl]
+                    properties:
+                      quote: {$ref: '#/components/schemas/Quote'}
+                      publicUrl: {type: string, format: uri}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /api/v1/repair-orders/{repairOrderId}/work-logs:
+    post:
+      tags: [Service]
+      summary: Append a work log
+      operationId: createWorkLog
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateWorkLogRequest'}
+      responses:
+        '201': {description: Work log created}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /api/v1/repair-orders/{repairOrderId}/qc-runs:
+    post:
+      tags: [Service]
+      summary: Submit a QC run and derive pass/fail
+      operationId: createQcRun
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateQcRunRequest'}
+      responses:
+        '201': {description: QC run created}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders/{repairOrderId}/handovers:
+    post:
+      tags: [Service]
+      summary: Record payment disposition, handover, warranty, and completion
+      operationId: completeHandover
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CompleteHandoverRequest'}
+      responses:
+        '201':
+          description: Handover completed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /public/v1/orders/{token}:
+    get:
+      tags: [Public portal]
+      summary: Get customer-safe order and current bound quote data
+      operationId: getPublicOrder
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicToken'
+      responses:
+        '200':
+          description: Public-safe order
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublicOrderResponse'}
+        '404': {$ref: '#/components/responses/PublicLinkInvalid'}
+        '410': {$ref: '#/components/responses/PublicLinkExpired'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
+  /public/v1/quotes/{token}/decision:
+    post:
+      tags: [Public portal]
+      summary: Submit one idempotent decision for the bound quote version
+      operationId: decideQuote
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuoteDecisionRequest'}
+      responses:
+        '200':
+          description: Decision recorded or prior idempotent result returned
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/QuoteDecisionResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '410': {$ref: '#/components/responses/PublicLinkExpired'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/ai/device-ocr:
+    post:
+      tags: [AI]
+      summary: Queue device-field OCR from an authorized media asset
+      operationId: queueDeviceOcr
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaAssetId]
+              properties:
+                mediaAssetId: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '202':
+          description: AI run queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
+  /api/v1/ai/runs/{aiRunId}:
+    get:
+      tags: [AI]
+      summary: Read an AI run owned by the active shop
+      operationId: getAiRun
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - name: aiRunId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: AI run
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ShopHeader:
+      name: X-Shop-Id
+      in: header
+      required: true
+      description: Shop selector validated against the authenticated user's active membership.
+      schema: {$ref: '#/components/schemas/Uuid'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128}
+    Cursor:
+      name: cursor
+      in: query
+      schema: {type: string}
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    RepairOrderId:
+      name: repairOrderId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    QuoteVersionId:
+      name: quoteVersionId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    PublicToken:
+      name: token
+      in: path
+      required: true
+      schema: {type: string, minLength: 32, maxLength: 256}
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    Forbidden:
+      description: Authenticated actor lacks permission
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    NotFound:
+      description: Resource not found in the active tenant
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    Conflict:
+      description: Conflict or duplicate/idempotency mismatch
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    InvalidState:
+      description: Domain state or guard rejects the action
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    ValidationError:
+      description: Request validation failed
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After: {schema: {type: integer}}
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    PublicLinkInvalid:
+      description: Public link is invalid or revoked
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    PublicLinkExpired:
+      description: Public link or quote has expired or been superseded
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    IsoDateTime:
+      type: string
+      format: date-time
+    MoneyVnd:
+      type: integer
+      format: int64
+      minimum: 0
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            requestId: {type: string}
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, code]
+                properties:
+                  field: {type: string}
+                  code: {type: string}
+                  message: {type: string}
+    RegisterOwnerRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, displayName, shopName, branchName]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        password: {type: string, minLength: 10, maxLength: 128}
+        displayName: {type: string, minLength: 1, maxLength: 100}
+        shopName: {type: string, minLength: 1, maxLength: 150}
+        branchName: {type: string, minLength: 1, maxLength: 150}
+        timezone: {type: string, default: Asia/Ho_Chi_Minh}
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string}
+    AuthResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [accessToken, expiresInSeconds, user]
+          properties:
+            accessToken: {type: string}
+            expiresInSeconds: {type: integer, example: 900}
+            user: {$ref: '#/components/schemas/CurrentUser'}
+    CurrentUser:
+      type: object
+      required: [id, email, displayName, memberships]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        email: {type: string, format: email}
+        displayName: {type: string}
+        memberships:
+          type: array
+          items:
+            type: object
+            required: [shopId, shopName, role, status]
+            properties:
+              shopId: {$ref: '#/components/schemas/Uuid'}
+              shopName: {type: string}
+              role: {type: string, enum: [OWNER, RECEPTIONIST, TECHNICIAN]}
+              status: {type: string, enum: [INVITED, ACTIVE, INACTIVE]}
+    CreateCustomerRequest:
+      type: object
+      additionalProperties: false
+      required: [name, phone]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 150}
+        phone: {type: string, minLength: 8, maxLength: 30}
+        email: {type: [string, 'null'], format: email}
+        notes: {type: [string, 'null'], maxLength: 2000}
+    Customer:
+      type: object
+      required: [id, name, phone, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        phone: {type: string}
+        email: {type: [string, 'null']}
+        notes: {type: [string, 'null']}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    CustomerResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/Customer'}}
+    CustomerListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/Customer'}}
+        meta:
+          type: object
+          properties: {nextCursor: {type: [string, 'null']}}
+    DeviceType:
+      type: string
+      enum: [PHONE, LAPTOP, TABLET, OTHER]
+    CreateDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [type, brand, model]
+      properties:
+        type: {$ref: '#/components/schemas/DeviceType'}
+        brand: {type: string, minLength: 1, maxLength: 100}
+        model: {type: string, minLength: 1, maxLength: 150}
+        color: {type: [string, 'null'], maxLength: 50}
+        serial: {type: [string, 'null'], maxLength: 100}
+        imei: {type: [string, 'null'], maxLength: 32}
+        notes: {type: [string, 'null'], maxLength: 2000}
+    Device:
+      type: object
+      required: [id, customerId, type, brand, model]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        customerId: {$ref: '#/components/schemas/Uuid'}
+        type: {$ref: '#/components/schemas/DeviceType'}
+        brand: {type: string}
+        model: {type: string}
+        color: {type: [string, 'null']}
+        serialMasked: {type: [string, 'null']}
+        imeiMasked: {type: [string, 'null']}
+    DeviceResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/Device'}}
+    RepairOrderStatus:
+      type: string
+      enum: [RECEIVED, DIAGNOSING, AWAITING_APPROVAL, APPROVED, WAITING_PARTS, REPAIRING, QUALITY_CHECK, READY_FOR_PICKUP, COMPLETED, VOIDED]
+    CompletionOutcome:
+      type: string
+      enum: [REPAIRED, DECLINED_QUOTE, UNREPAIRABLE, NO_FAULT_FOUND, CUSTOMER_CANCELLED]
+    CreateRepairOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [branchId, customerId, deviceId, reportedProblem, intakeCondition, consentAcknowledged, mediaAssetIds]
+      properties:
+        branchId: {$ref: '#/components/schemas/Uuid'}
+        customerId: {$ref: '#/components/schemas/Uuid'}
+        deviceId: {$ref: '#/components/schemas/Uuid'}
+        reportedProblem: {type: string, minLength: 1, maxLength: 5000}
+        intakeCondition: {type: string, minLength: 1, maxLength: 5000}
+        consentAcknowledged: {type: boolean, const: true}
+        priority: {type: string, enum: [LOW, NORMAL, HIGH, URGENT], default: NORMAL}
+        promisedAt: {type: [string, 'null'], format: date-time}
+        accessories:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: {type: string, minLength: 1, maxLength: 100}
+              conditionNote: {type: [string, 'null'], maxLength: 500}
+        mediaAssetIds:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/Uuid'}
+    RepairOrder:
+      type: object
+      required: [id, code, status, priority, reportedProblem, intakeCondition, receivedAt, lockVersion, customer, device]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string}
+        status: {$ref: '#/components/schemas/RepairOrderStatus'}
+        completionOutcome:
+          oneOf:
+            - {$ref: '#/components/schemas/CompletionOutcome'}
+            - {type: 'null'}
+        priority: {type: string, enum: [LOW, NORMAL, HIGH, URGENT]}
+        branchId: {$ref: '#/components/schemas/Uuid'}
+        reportedProblem: {type: string}
+        intakeCondition: {type: string}
+        assignedTechnicianUserId: {type: [string, 'null'], format: uuid}
+        customer: {$ref: '#/components/schemas/Customer'}
+        device: {$ref: '#/components/schemas/Device'}
+        receivedAt: {$ref: '#/components/schemas/IsoDateTime'}
+        readyAt: {type: [string, 'null'], format: date-time}
+        returnedAt: {type: [string, 'null'], format: date-time}
+        lockVersion: {type: integer, minimum: 0}
+    RepairOrderResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/RepairOrder'}}
+    RepairOrderListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/RepairOrder'}}
+        meta:
+          type: object
+          properties: {nextCursor: {type: [string, 'null']}}
+    PresignMediaRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, originalName, mimeType, byteSize]
+      properties:
+        purpose: {type: string, enum: [INTAKE, DIAGNOSIS, REPAIR, QC, HANDOVER, SIGNATURE]}
+        originalName: {type: string, maxLength: 255}
+        mimeType: {type: string, enum: [image/jpeg, image/png, image/webp]}
+        byteSize: {type: integer, minimum: 1, maximum: 15000000}
+        checksumSha256: {type: [string, 'null'], pattern: '^[a-fA-F0-9]{64}$'}
+    PresignMediaResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [mediaAssetId, uploadUrl, expiresAt]
+          properties:
+            mediaAssetId: {$ref: '#/components/schemas/Uuid'}
+            uploadUrl: {type: string, format: uri}
+            expiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+    TransitionRepairOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [targetStatus, expectedLockVersion]
+      properties:
+        targetStatus: {$ref: '#/components/schemas/RepairOrderStatus'}
+        completionOutcome:
+          oneOf:
+            - {$ref: '#/components/schemas/CompletionOutcome'}
+            - {type: 'null'}
+        reason: {type: [string, 'null'], maxLength: 1000}
+        expectedLockVersion: {type: integer, minimum: 0}
+    CreateDiagnosisRequest:
+      type: object
+      additionalProperties: false
+      required: [finding, recommendation]
+      properties:
+        finding: {type: string, minLength: 1, maxLength: 10000}
+        recommendation: {type: string, minLength: 1, maxLength: 10000}
+        supersedesId: {type: [string, 'null'], format: uuid}
+    CreateQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        diagnosisId: {type: [string, 'null'], format: uuid}
+        discount: {$ref: '#/components/schemas/MoneyVnd'}
+        customerNote: {type: [string, 'null'], maxLength: 3000}
+        expiresAt: {type: [string, 'null'], format: date-time}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/CreateQuoteItem'}
+    CreateQuoteItem:
+      type: object
+      additionalProperties: false
+      required: [kind, description, quantity, unitPrice, isOptional]
+      properties:
+        kind: {type: string, enum: [SERVICE, PART, FEE]}
+        description: {type: string, minLength: 1, maxLength: 500}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
+        isOptional: {type: boolean}
+        approvalGroup: {type: [string, 'null'], maxLength: 80}
+    QuoteItem:
+      allOf:
+        - {$ref: '#/components/schemas/CreateQuoteItem'}
+        - type: object
+          required: [id, lineTotal]
+          properties:
+            id: {$ref: '#/components/schemas/Uuid'}
+            lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
+    Quote:
+      type: object
+      required: [id, repairOrderId, versionNo, status, currency, items, subtotal, discount, total]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        versionNo: {type: integer, minimum: 1}
+        status: {type: string, enum: [DRAFT, SENT, ACCEPTED, PARTIALLY_ACCEPTED, DECLINED, EXPIRED, SUPERSEDED]}
+        currency: {type: string, const: VND}
+        items: {type: array, items: {$ref: '#/components/schemas/QuoteItem'}}
+        subtotal: {$ref: '#/components/schemas/MoneyVnd'}
+        discount: {$ref: '#/components/schemas/MoneyVnd'}
+        total: {$ref: '#/components/schemas/MoneyVnd'}
+        expiresAt: {type: [string, 'null'], format: date-time}
+        sentAt: {type: [string, 'null'], format: date-time}
+    QuoteResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/Quote'}}
+    QuoteDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: {type: string, enum: [ACCEPTED, PARTIALLY_ACCEPTED, DECLINED]}
+        approvedItemIds:
+          type: array
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/Uuid'}
+        customerNote: {type: [string, 'null'], maxLength: 2000}
+    QuoteDecisionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [quoteVersionId, decision, approvedTotal, decidedAt]
+          properties:
+            quoteVersionId: {$ref: '#/components/schemas/Uuid'}
+            decision: {type: string, enum: [ACCEPTED, PARTIALLY_ACCEPTED, DECLINED]}
+            approvedTotal: {$ref: '#/components/schemas/MoneyVnd'}
+            decidedAt: {$ref: '#/components/schemas/IsoDateTime'}
+    CreateWorkLogRequest:
+      type: object
+      additionalProperties: false
+      required: [type, content]
+      properties:
+        type: {type: string, enum: [REPAIR, TEST, CUSTOMER_CONTACT, INTERNAL_NOTE, CORRECTION]}
+        content: {type: string, minLength: 1, maxLength: 10000}
+        quoteItemId: {type: [string, 'null'], format: uuid}
+        supersedesId: {type: [string, 'null'], format: uuid}
+    CreateQcRunRequest:
+      type: object
+      additionalProperties: false
+      required: [qcTemplateId, results]
+      properties:
+        qcTemplateId: {$ref: '#/components/schemas/Uuid'}
+        notes: {type: [string, 'null'], maxLength: 5000}
+        results:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [qcTemplateItemId, result]
+            properties:
+              qcTemplateItemId: {$ref: '#/components/schemas/Uuid'}
+              result: {type: string, enum: [PASS, FAIL, NOT_APPLICABLE]}
+              note: {type: [string, 'null'], maxLength: 1000}
+    CompleteHandoverRequest:
+      type: object
+      additionalProperties: false
+      required: [recipientName, paymentDisposition]
+      properties:
+        recipientName: {type: string, minLength: 1, maxLength: 150}
+        paymentDisposition: {type: string, enum: [PAID, PARTIALLY_PAID, WAIVED, PAY_LATER]}
+        paymentNote: {type: [string, 'null'], maxLength: 1000}
+        signatureMediaAssetId: {type: [string, 'null'], format: uuid}
+        payment:
+          type: [object, 'null']
+          properties:
+            amount: {$ref: '#/components/schemas/MoneyVnd'}
+            method: {type: string, enum: [CASH, BANK_TRANSFER, CARD, E_WALLET, OTHER]}
+            reference: {type: [string, 'null'], maxLength: 200}
+        warranty:
+          type: [object, 'null']
+          properties:
+            startsAt: {$ref: '#/components/schemas/IsoDateTime'}
+            endsAt: {$ref: '#/components/schemas/IsoDateTime'}
+            terms: {type: string, minLength: 1, maxLength: 10000}
+    PublicOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [shopName, orderCode, deviceLabel, status, timeline]
+          properties:
+            shopName: {type: string}
+            shopContact: {type: [string, 'null']}
+            orderCode: {type: string}
+            deviceLabel: {type: string}
+            status: {$ref: '#/components/schemas/RepairOrderStatus'}
+            completionOutcome:
+              oneOf:
+                - {$ref: '#/components/schemas/CompletionOutcome'}
+                - {type: 'null'}
+            timeline:
+              type: array
+              items:
+                type: object
+                required: [type, message, createdAt]
+                properties:
+                  type: {type: string}
+                  message: {type: string}
+                  createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+            quote:
+              oneOf:
+                - {$ref: '#/components/schemas/Quote'}
+                - {type: 'null'}
+    AiRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, capability, status, promptVersion, createdAt]
+          properties:
+            id: {$ref: '#/components/schemas/Uuid'}
+            capability: {type: string, enum: [DEVICE_OCR, INTAKE_DRAFT, CHECKLIST_SUGGESTION, CUSTOMER_SUMMARY]}
+            status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, REJECTED]}
+            promptVersion: {type: string}
+            output: {type: [object, 'null']}
+            confidence: {type: [number, 'null'], minimum: 0, maximum: 1}
+            errorCode: {type: [string, 'null']}
+            createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+
+security:
+  - bearerAuth: []

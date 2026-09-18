@@ -1,0 +1,823 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipRole {
+  OWNER
+  RECEPTIONIST
+  TECHNICIAN
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  INACTIVE
+}
+
+enum DeviceType {
+  PHONE
+  LAPTOP
+  TABLET
+  OTHER
+}
+
+enum RepairOrderStatus {
+  RECEIVED
+  DIAGNOSING
+  AWAITING_APPROVAL
+  APPROVED
+  WAITING_PARTS
+  REPAIRING
+  QUALITY_CHECK
+  READY_FOR_PICKUP
+  COMPLETED
+  VOIDED
+}
+
+enum CompletionOutcome {
+  REPAIRED
+  DECLINED_QUOTE
+  UNREPAIRABLE
+  NO_FAULT_FOUND
+  CUSTOMER_CANCELLED
+}
+
+enum ServiceType {
+  STANDARD
+  WARRANTY
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum MediaPurpose {
+  INTAKE
+  DIAGNOSIS
+  REPAIR
+  QC
+  HANDOVER
+  SIGNATURE
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum QuoteItemKind {
+  SERVICE
+  PART
+  FEE
+}
+
+enum QuoteDecision {
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  DECLINED
+}
+
+enum WorkLogType {
+  REPAIR
+  TEST
+  CUSTOMER_CONTACT
+  INTERNAL_NOTE
+  CORRECTION
+}
+
+enum QcRunResult {
+  PASS
+  FAIL
+}
+
+enum QcItemResult {
+  PASS
+  FAIL
+  NOT_APPLICABLE
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  E_WALLET
+  OTHER
+}
+
+enum PaymentDisposition {
+  PAID
+  PARTIALLY_PAID
+  WAIVED
+  PAY_LATER
+}
+
+enum TokenScope {
+  TRACK_ORDER
+  DECIDE_QUOTE
+}
+
+enum ActorType {
+  USER
+  CUSTOMER_TOKEN
+  SYSTEM
+}
+
+enum AiCapability {
+  DEVICE_OCR
+  INTAKE_DRAFT
+  CHECKLIST_SUGGESTION
+  CUSTOMER_SUMMARY
+}
+
+enum AiRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  REJECTED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+}
+
+enum NotificationChannel {
+  EMAIL
+  ZALO
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String
+  displayName  String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+
+  memberships ShopMembership[]
+  sessions    AuthSession[]
+
+  @@map("users")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ipHash           String?
+  expiresAt        DateTime  @db.Timestamptz(3)
+  revokedAt        DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("auth_sessions")
+}
+
+model Shop {
+  id                      String   @id @default(uuid()) @db.Uuid
+  name                    String
+  slug                    String   @unique
+  timezone                String   @default("Asia/Ho_Chi_Minh")
+  contactPhone            String?
+  orderCodePrefix         String   @default("RF")
+  intakePhotoMinimum      Int      @default(1)
+  defaultQuoteExpiryHours Int      @default(48)
+  defaultWarrantyTerms    String?
+  settings                Json     @default("{}")
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+
+  branches           Branch[]
+  memberships        ShopMembership[]
+  customers          Customer[]
+  devices            Device[]
+  repairOrders       RepairOrder[]
+  mediaAssets        MediaAsset[]
+  qcTemplates        QcTemplate[]
+  auditLogs          AuditLog[]
+  outboxEvents       OutboxEvent[]
+  idempotencyRecords IdempotencyRecord[]
+
+  @@map("shops")
+}
+
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  shopId    String   @db.Uuid
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  repairOrders RepairOrder[]
+
+  @@unique([shopId, id])
+  @@unique([shopId, name])
+  @@index([shopId, isActive])
+  @@map("branches")
+}
+
+model ShopMembership {
+  shopId    String           @db.Uuid
+  userId    String           @db.Uuid
+  role      MembershipRole
+  status    MembershipStatus @default(INVITED)
+  invitedAt DateTime         @default(now()) @db.Timestamptz(3)
+  joinedAt  DateTime?        @db.Timestamptz(3)
+  updatedAt DateTime         @updatedAt @db.Timestamptz(3)
+
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+
+  @@id([shopId, userId])
+  @@index([userId, status])
+  @@map("shop_memberships")
+}
+
+model Customer {
+  id              String    @id @default(uuid()) @db.Uuid
+  shopId          String    @db.Uuid
+  name            String
+  phoneRaw        String
+  phoneNormalized String
+  email           String?
+  notes           String?
+  consentAt       DateTime? @db.Timestamptz(3)
+  archivedAt      DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  devices      Device[]
+  repairOrders RepairOrder[]
+
+  @@unique([shopId, id])
+  @@index([shopId, phoneNormalized])
+  @@index([shopId, name])
+  @@map("customers")
+}
+
+model Device {
+  id               String     @id @default(uuid()) @db.Uuid
+  shopId           String     @db.Uuid
+  customerId       String     @db.Uuid
+  type             DeviceType
+  brand            String
+  model            String
+  color            String?
+  serialNormalized String?
+  imeiNormalized   String?
+  notes            String?
+  archivedAt       DateTime?  @db.Timestamptz(3)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
+
+  shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  customer     Customer      @relation(fields: [shopId, customerId], references: [shopId, id], onDelete: Restrict)
+  repairOrders RepairOrder[]
+
+  @@unique([shopId, id])
+  @@index([shopId, customerId])
+  @@index([shopId, serialNormalized])
+  @@index([shopId, imeiNormalized])
+  @@map("devices")
+}
+
+model RepairOrder {
+  id                    String             @id @default(uuid()) @db.Uuid
+  shopId                String             @db.Uuid
+  branchId              String             @db.Uuid
+  customerId            String             @db.Uuid
+  deviceId              String             @db.Uuid
+  sourceOrderId         String?            @db.Uuid
+  orderNo               Int
+  code                  String
+  serviceType           ServiceType        @default(STANDARD)
+  status                RepairOrderStatus  @default(RECEIVED)
+  completionOutcome     CompletionOutcome?
+  priority              Priority           @default(NORMAL)
+  reportedProblem       String
+  intakeCondition       String
+  consentAcknowledgedAt DateTime           @db.Timestamptz(3)
+  customerSnapshot      Json
+  deviceSnapshot        Json
+  promisedAt            DateTime?          @db.Timestamptz(3)
+  receivedAt            DateTime           @default(now()) @db.Timestamptz(3)
+  readyAt               DateTime?          @db.Timestamptz(3)
+  returnedAt            DateTime?          @db.Timestamptz(3)
+  lockVersion           Int                @default(0)
+  createdByUserId       String             @db.Uuid
+  createdAt             DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
+
+  shop           Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  branch         Branch              @relation(fields: [shopId, branchId], references: [shopId, id], onDelete: Restrict)
+  customer       Customer            @relation(fields: [shopId, customerId], references: [shopId, id], onDelete: Restrict)
+  device         Device              @relation(fields: [shopId, deviceId], references: [shopId, id], onDelete: Restrict)
+  sourceOrder    RepairOrder?        @relation("WarrantyFollowUp", fields: [shopId, sourceOrderId], references: [shopId, id], onDelete: Restrict)
+  followUpOrders RepairOrder[]       @relation("WarrantyFollowUp")
+  accessories    IntakeAccessory[]
+  media          MediaAsset[]
+  assignments    Assignment[]
+  diagnoses      Diagnosis[]
+  quoteVersions  QuoteVersion[]
+  workLogs       WorkLog[]
+  partsUsed      PartUsed[]
+  qcRuns         QcRun[]
+  handover       Handover?
+  payments       Payment[]
+  warranty       Warranty?
+  events         OrderEvent[]
+  publicTokens   PublicAccessToken[]
+  aiRuns         AiRun[]
+
+  @@unique([shopId, id])
+  @@unique([shopId, code])
+  @@unique([shopId, orderNo])
+  @@index([shopId, branchId, status, updatedAt(sort: Desc)])
+  @@index([shopId, customerId, createdAt(sort: Desc)])
+  @@index([shopId, deviceId, createdAt(sort: Desc)])
+  @@index([shopId, sourceOrderId])
+  @@map("repair_orders")
+}
+
+model IntakeAccessory {
+  id            String   @id @default(uuid()) @db.Uuid
+  shopId        String   @db.Uuid
+  repairOrderId String   @db.Uuid
+  name          String
+  conditionNote String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId])
+  @@map("intake_accessories")
+}
+
+model MediaAsset {
+  id               String       @id @default(uuid()) @db.Uuid
+  shopId           String       @db.Uuid
+  repairOrderId    String?      @db.Uuid
+  purpose          MediaPurpose
+  objectKey        String       @unique
+  originalName     String
+  mimeType         String
+  byteSize         Int
+  checksumSha256   String?
+  uploadedByUserId String       @db.Uuid
+  uploadedAt       DateTime?    @db.Timestamptz(3)
+  expiresAt        DateTime?    @db.Timestamptz(3)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  repairOrder RepairOrder? @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, purpose])
+  @@index([shopId, expiresAt])
+  @@map("media_assets")
+}
+
+model Assignment {
+  id               String    @id @default(uuid()) @db.Uuid
+  shopId           String    @db.Uuid
+  repairOrderId    String    @db.Uuid
+  technicianUserId String    @db.Uuid
+  assignedByUserId String    @db.Uuid
+  assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  unassignedAt     DateTime? @db.Timestamptz(3)
+
+  repairOrder RepairOrder    @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  technician  ShopMembership @relation(fields: [shopId, technicianUserId], references: [shopId, userId], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, unassignedAt])
+  @@index([shopId, technicianUserId, unassignedAt])
+  @@map("assignments")
+}
+
+model Diagnosis {
+  id              String   @id @default(uuid()) @db.Uuid
+  shopId          String   @db.Uuid
+  repairOrderId   String   @db.Uuid
+  revisionNo      Int
+  finding         String
+  recommendation  String
+  supersedesId    String?  @db.Uuid
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([repairOrderId, revisionNo])
+  @@index([shopId, repairOrderId, createdAt])
+  @@map("diagnoses")
+}
+
+model QuoteVersion {
+  id              String      @id @default(uuid()) @db.Uuid
+  shopId          String      @db.Uuid
+  repairOrderId   String      @db.Uuid
+  diagnosisId     String?     @db.Uuid
+  versionNo       Int
+  status          QuoteStatus @default(DRAFT)
+  currency        String      @default("VND")
+  subtotal        BigInt      @default(0)
+  discount        BigInt      @default(0)
+  total           BigInt      @default(0)
+  customerNote    String?
+  expiresAt       DateTime?   @db.Timestamptz(3)
+  sentAt          DateTime?   @db.Timestamptz(3)
+  decidedAt       DateTime?   @db.Timestamptz(3)
+  createdByUserId String      @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+
+  repairOrder  RepairOrder         @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  items        QuoteItem[]
+  approval     QuoteApproval?
+  publicTokens PublicAccessToken[]
+
+  @@unique([shopId, id])
+  @@unique([repairOrderId, versionNo])
+  @@index([shopId, repairOrderId, status])
+  @@map("quote_versions")
+}
+
+model QuoteItem {
+  id             String        @id @default(uuid()) @db.Uuid
+  shopId         String        @db.Uuid
+  quoteVersionId String        @db.Uuid
+  kind           QuoteItemKind
+  description    String
+  quantity       Decimal       @db.Decimal(12, 2)
+  unitPrice      BigInt
+  lineTotal      BigInt
+  isOptional     Boolean       @default(false)
+  approvalGroup  String?
+  sortOrder      Int           @default(0)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  quoteVersion QuoteVersion @relation(fields: [shopId, quoteVersionId], references: [shopId, id], onDelete: Restrict)
+  workLogs     WorkLog[]
+
+  @@unique([shopId, id])
+  @@index([shopId, quoteVersionId, sortOrder])
+  @@map("quote_items")
+}
+
+model QuoteApproval {
+  id                   String        @id @default(uuid()) @db.Uuid
+  shopId               String        @db.Uuid
+  quoteVersionId       String        @unique @db.Uuid
+  decision             QuoteDecision
+  approvedItemSnapshot Json
+  approvedTotal        BigInt
+  customerNote         String?
+  actorFingerprint     String?
+  idempotencyKeyHash   String
+  decidedAt            DateTime      @default(now()) @db.Timestamptz(3)
+
+  quoteVersion QuoteVersion @relation(fields: [shopId, quoteVersionId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([shopId, quoteVersionId])
+  @@index([shopId, decidedAt])
+  @@map("quote_approvals")
+}
+
+model WorkLog {
+  id              String      @id @default(uuid()) @db.Uuid
+  shopId          String      @db.Uuid
+  repairOrderId   String      @db.Uuid
+  quoteItemId     String?     @db.Uuid
+  supersedesId    String?     @db.Uuid
+  type            WorkLogType
+  content         String
+  createdByUserId String      @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  quoteItem   QuoteItem?  @relation(fields: [shopId, quoteItemId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, createdAt])
+  @@map("work_logs")
+}
+
+model PartUsed {
+  id              String   @id @default(uuid()) @db.Uuid
+  shopId          String   @db.Uuid
+  repairOrderId   String   @db.Uuid
+  name            String
+  sku             String?
+  quantity        Decimal  @db.Decimal(12, 2)
+  unitCost        BigInt?
+  unitSalePrice   BigInt?
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId])
+  @@map("parts_used")
+}
+
+model QcTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  shopId    String   @db.Uuid
+  name      String
+  versionNo Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  shop  Shop             @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  items QcTemplateItem[]
+  runs  QcRun[]
+
+  @@unique([shopId, id])
+  @@unique([shopId, name, versionNo])
+  @@index([shopId, isActive])
+  @@map("qc_templates")
+}
+
+model QcTemplateItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  shopId       String   @db.Uuid
+  qcTemplateId String   @db.Uuid
+  label        String
+  isRequired   Boolean  @default(true)
+  allowNa      Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  template QcTemplate @relation(fields: [shopId, qcTemplateId], references: [shopId, id], onDelete: Restrict)
+  results  QcResult[]
+
+  @@unique([shopId, id])
+  @@index([shopId, qcTemplateId, sortOrder])
+  @@map("qc_template_items")
+}
+
+model QcRun {
+  id              String      @id @default(uuid()) @db.Uuid
+  shopId          String      @db.Uuid
+  repairOrderId   String      @db.Uuid
+  qcTemplateId    String      @db.Uuid
+  result          QcRunResult
+  notes           String?
+  checkedByUserId String      @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  template    QcTemplate  @relation(fields: [shopId, qcTemplateId], references: [shopId, id], onDelete: Restrict)
+  results     QcResult[]
+
+  @@unique([shopId, id])
+  @@index([shopId, repairOrderId, createdAt])
+  @@map("qc_runs")
+}
+
+model QcResult {
+  id               String       @id @default(uuid()) @db.Uuid
+  shopId           String       @db.Uuid
+  qcRunId          String       @db.Uuid
+  qcTemplateItemId String       @db.Uuid
+  result           QcItemResult
+  note             String?
+
+  run          QcRun          @relation(fields: [shopId, qcRunId], references: [shopId, id], onDelete: Restrict)
+  templateItem QcTemplateItem @relation(fields: [shopId, qcTemplateItemId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([qcRunId, qcTemplateItemId])
+  @@index([shopId, qcRunId])
+  @@map("qc_results")
+}
+
+model Handover {
+  id                    String             @id @default(uuid()) @db.Uuid
+  shopId                String             @db.Uuid
+  repairOrderId         String             @unique @db.Uuid
+  recipientName         String
+  paymentDisposition    PaymentDisposition
+  paymentNote           String?
+  signatureMediaAssetId String?            @db.Uuid
+  handedOverByUserId    String             @db.Uuid
+  handedOverAt          DateTime           @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([shopId, repairOrderId])
+  @@index([shopId, handedOverAt])
+  @@map("handovers")
+}
+
+model Payment {
+  id               String        @id @default(uuid()) @db.Uuid
+  shopId           String        @db.Uuid
+  repairOrderId    String        @db.Uuid
+  amount           BigInt
+  method           PaymentMethod
+  reference        String?
+  receivedByUserId String        @db.Uuid
+  receivedAt       DateTime      @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, receivedAt])
+  @@map("payments")
+}
+
+model Warranty {
+  id            String   @id @default(uuid()) @db.Uuid
+  shopId        String   @db.Uuid
+  repairOrderId String   @unique @db.Uuid
+  startsAt      DateTime @db.Timestamptz(3)
+  endsAt        DateTime @db.Timestamptz(3)
+  termsSnapshot String
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([shopId, repairOrderId])
+  @@index([shopId, endsAt])
+  @@map("warranties")
+}
+
+model OrderEvent {
+  id             String             @id @default(uuid()) @db.Uuid
+  shopId         String             @db.Uuid
+  repairOrderId  String             @db.Uuid
+  eventType      String
+  fromStatus     RepairOrderStatus?
+  toStatus       RepairOrderStatus?
+  actorType      ActorType
+  actorUserId    String?            @db.Uuid
+  publicPayload  Json?
+  privatePayload Json?
+  requestId      String?
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, createdAt])
+  @@map("order_events")
+}
+
+model PublicAccessToken {
+  id             String     @id @default(uuid()) @db.Uuid
+  shopId         String     @db.Uuid
+  repairOrderId  String     @db.Uuid
+  quoteVersionId String?    @db.Uuid
+  scope          TokenScope
+  tokenHash      String     @unique
+  expiresAt      DateTime   @db.Timestamptz(3)
+  lastUsedAt     DateTime?  @db.Timestamptz(3)
+  revokedAt      DateTime?  @db.Timestamptz(3)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+
+  repairOrder  RepairOrder   @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  quoteVersion QuoteVersion? @relation(fields: [shopId, quoteVersionId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, scope])
+  @@index([expiresAt, revokedAt])
+  @@map("public_access_tokens")
+}
+
+model AiRun {
+  id                String       @id @default(uuid()) @db.Uuid
+  shopId            String       @db.Uuid
+  repairOrderId     String?      @db.Uuid
+  capability        AiCapability
+  status            AiRunStatus  @default(QUEUED)
+  provider          String?
+  model             String?
+  promptVersion     String
+  inputReference    Json
+  output            Json?
+  confidence        Decimal?     @db.Decimal(5, 4)
+  errorCode         String?
+  requestedByUserId String       @db.Uuid
+  acceptedByUserId  String?      @db.Uuid
+  acceptedAt        DateTime?    @db.Timestamptz(3)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  completedAt       DateTime?    @db.Timestamptz(3)
+
+  repairOrder RepairOrder? @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+
+  @@index([shopId, repairOrderId, capability, createdAt])
+  @@index([status, createdAt])
+  @@map("ai_runs")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  shopId      String   @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String
+  beforeData  Json?
+  afterData   Json?
+  requestId   String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@index([shopId, entityType, entityId, createdAt])
+  @@index([shopId, actorUserId, createdAt])
+  @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid()) @db.Uuid
+  shopId        String       @db.Uuid
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now()) @db.Timestamptz(3)
+  lockedAt      DateTime?    @db.Timestamptz(3)
+  lockedBy      String?
+  lastError     String?
+  completedAt   DateTime?    @db.Timestamptz(3)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+
+  shop          Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  notifications NotificationDelivery[]
+
+  @@index([status, availableAt])
+  @@index([shopId, aggregateType, aggregateId])
+  @@map("outbox_events")
+}
+
+model NotificationDelivery {
+  id                String              @id @default(uuid()) @db.Uuid
+  outboxEventId     String              @db.Uuid
+  channel           NotificationChannel
+  destinationHash   String
+  status            NotificationStatus  @default(PENDING)
+  providerMessageId String?
+  attempts          Int                 @default(0)
+  lastErrorCode     String?
+  sentAt            DateTime?           @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+
+  outboxEvent OutboxEvent @relation(fields: [outboxEventId], references: [id], onDelete: Restrict)
+
+  @@unique([outboxEventId, channel])
+  @@index([status, createdAt])
+  @@map("notification_deliveries")
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  shopId         String   @db.Uuid
+  scope          String
+  keyHash        String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  expiresAt      DateTime @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, scope, keyHash])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}

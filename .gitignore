@@ -1,0 +1,32 @@
+# dependencies and builds
+node_modules/
+.next/
+dist/
+coverage/
+.turbo/
+
+# environment and secrets
+.env
+.env.*
+!.env.example
+
+# logs and runtime
+*.log
+*.pid
+
+# editor and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# local storage and test artifacts
+.local/
+test-results/
+playwright-report/
+
+# Prisma local databases
+*.db
+*.db-journal
