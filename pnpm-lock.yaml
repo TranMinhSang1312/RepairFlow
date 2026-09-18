@@ -66,6 +66,12 @@ importers:
       '@nestjs/platform-express':
         specifier: 12.0.3
         version: 12.0.3(@nestjs/common@12.0.3(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.3)
+      '@prisma/adapter-pg':
+        specifier: 7.10.0
+        version: 7.10.0
+      '@prisma/client':
+        specifier: 7.10.0
+        version: 7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3))(typescript@5.9.3)
       '@repairflow/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -78,12 +84,18 @@ importers:
       class-validator:
         specifier: 0.14.2
         version: 0.14.2
+      cookie:
+        specifier: 2.0.1
+        version: 2.0.1
       dotenv:
         specifier: 18.0.0
         version: 18.0.0
       nestjs-pino:
         specifier: 5.2.0
         version: 5.2.0(@nestjs/common@12.0.3(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.3)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
       pino:
         specifier: 10.3.1
         version: 10.3.1
@@ -1645,6 +1657,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cookie@2.0.1:
+    resolution: {integrity: sha512-yuToqVvRrj6pfDXREyQAAv8SkAEk/8GS3jQRTiUMm66TVtBYmqQeoEjL2Lmq8Rpo6271vH76InTChTitEAm65w==}
+    engines: {node: '>=22'}
 
   cookiejar@2.1.4:
     resolution: {integrity: sha512-LDx6oHrK+PhzLKJU9j5S7/Y3jM/mUHvD/DeI1WQmJn652iPC5Y4TBzC9l+5OMOXlyTTA+SmVUPm0HQUwpD5Jqw==}
@@ -4325,6 +4341,8 @@ snapshots:
   cookie-signature@1.2.2: {}
 
   cookie@0.7.2: {}
+
+  cookie@2.0.1: {}
 
   cookiejar@2.1.4: {}
 

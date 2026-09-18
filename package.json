@@ -18,7 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint prisma/seed.ts prisma.config.ts && pnpm -r --if-present lint",
-    "typecheck": "pnpm typecheck:tools && pnpm -r --if-present typecheck",
+    "typecheck": "pnpm build:packages && pnpm typecheck:tools && pnpm -r --if-present typecheck",
     "typecheck:tools": "tsc -p tsconfig.tools.json --noEmit",
     "test": "pnpm -r --if-present test",
     "db:generate": "prisma generate",
