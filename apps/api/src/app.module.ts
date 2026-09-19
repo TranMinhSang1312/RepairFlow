@@ -11,6 +11,7 @@ import { AuthorizationModule } from "./common/authorization/authorization.module
 import { CustomersModule } from "./modules/customers/customers.module.js";
 import { DevicesModule } from "./modules/devices/devices.module.js";
 import { MediaModule } from "./modules/media/media.module.js";
+import { RepairOrdersModule } from "./modules/repair-orders/repair-orders.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -22,6 +23,7 @@ const environment = parseApiEnvironment(process.env);
     CustomersModule,
     DevicesModule,
     MediaModule,
+    RepairOrdersModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,
