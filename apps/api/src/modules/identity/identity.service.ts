@@ -347,6 +347,15 @@ export class IdentityService {
         shopName: membership.shop.name,
         role: membership.role,
         status: membership.status,
+        timezone: membership.shop.timezone,
+        intakePhotoMinimum: membership.shop.intakePhotoMinimum,
+        branches:
+          membership.status === MembershipStatus.ACTIVE
+            ? membership.shop.branches.map((branch) => ({
+                id: branch.id,
+                name: branch.name,
+              }))
+            : [],
       })),
     };
   }
