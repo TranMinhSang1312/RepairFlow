@@ -7,9 +7,15 @@ import { ApiException } from "../../common/api-exception.js";
 import { IdempotencyService } from "../../common/idempotency/idempotency.service.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import { MediaUploadVerifier } from "../media/media-upload-verifier.service.js";
-import type { CreateRepairOrderDto } from "./repair-order.dto.js";
-import { toRepairOrderView, type RepairOrderResponse } from "./repair-order.types.js";
-import { RepairOrdersRepository } from "./repair-orders.repository.js";
+import type { CreateRepairOrderDto, ListRepairOrdersQueryDto } from "./repair-order.dto.js";
+import {
+  toRepairOrderDetailView,
+  toRepairOrderView,
+  type RepairOrderDetailResponse,
+  type RepairOrderListResponse,
+  type RepairOrderResponse,
+} from "./repair-order.types.js";
+import { type RepairOrderCursor, RepairOrdersRepository } from "./repair-orders.repository.js";
 
 const DEVICE_CREDENTIAL_PATTERN =
   /(?:pin|password|passcode|unlock(?:\s+code)?|mật khẩu|mat khau)\s*[:#=-]\s*\S+/iu;
@@ -21,6 +27,44 @@ export class RepairOrdersService {
     private readonly idempotency: IdempotencyService,
     private readonly mediaVerifier: MediaUploadVerifier,
   ) {}
+
+  async list(
+    tenant: TenantContext,
+    query: ListRepairOrdersQueryDto,
+  ): Promise<RepairOrderListResponse> {
+    const cursor = query.cursor ? this.decodeCursor(query.cursor) : null;
+    const page = await this.repository.list(
+      tenant,
+      {
+        query: query.query?.trim() || null,
+        statuses: query.status?.length ? query.status : null,
+        branchId: query.branchId?.toLowerCase() ?? null,
+        technicianUserId: query.technicianUserId?.toLowerCase() ?? null,
+      },
+      cursor,
+    );
+    const last = page.orders.at(-1);
+    return {
+      data: page.orders.map(toRepairOrderView),
+      meta: {
+        nextCursor:
+          page.hasMore && last
+            ? this.encodeCursor({ id: last.id, updatedAt: last.updatedAt })
+            : null,
+      },
+    };
+  }
+
+  async detail(tenant: TenantContext, repairOrderId: string): Promise<RepairOrderDetailResponse> {
+    if (!this.isUuid(repairOrderId)) {
+      throw this.notFound();
+    }
+    const order = await this.repository.detail(tenant, repairOrderId.toLowerCase());
+    if (!order) {
+      throw this.notFound();
+    }
+    return { data: toRepairOrderDetailView(order) };
+  }
 
   create(
     tenant: TenantContext,
@@ -162,6 +206,42 @@ export class RepairOrdersService {
         ],
       );
     }
+  }
+
+  private encodeCursor(cursor: RepairOrderCursor): string {
+    return Buffer.from(
+      JSON.stringify({ id: cursor.id, updatedAt: cursor.updatedAt.toISOString() }),
+    ).toString("base64url");
+  }
+
+  private decodeCursor(value: string): RepairOrderCursor {
+    try {
+      const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
+        id?: unknown;
+        updatedAt?: unknown;
+      };
+      const updatedAt = typeof parsed.updatedAt === "string" ? new Date(parsed.updatedAt) : null;
+      if (
+        typeof parsed.id !== "string" ||
+        !this.isUuid(parsed.id) ||
+        !updatedAt ||
+        Number.isNaN(updatedAt.getTime())
+      ) {
+        throw new Error("Invalid cursor");
+      }
+      return { id: parsed.id.toLowerCase(), updatedAt };
+    } catch {
+      throw new ApiException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        "VALIDATION_FAILED",
+        "One or more input fields are invalid.",
+        [{ field: "cursor", code: "INVALID_CURSOR", message: "cursor is invalid" }],
+      );
+    }
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
   }
 
   private notFound(): ApiException {

@@ -302,7 +302,7 @@ paths:
           description: Repair order
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+              schema: {$ref: '#/components/schemas/RepairOrderDetailResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /api/v1/repair-orders/{repairOrderId}/media/presign:
@@ -861,6 +861,7 @@ components:
         assignedTechnicianUserId: {type: [string, 'null'], format: uuid}
         customer: {$ref: '#/components/schemas/Customer'}
         device: {$ref: '#/components/schemas/Device'}
+        promisedAt: {type: [string, 'null'], format: date-time}
         receivedAt: {$ref: '#/components/schemas/IsoDateTime'}
         readyAt: {type: [string, 'null'], format: date-time}
         returnedAt: {type: [string, 'null'], format: date-time}
@@ -869,6 +870,59 @@ components:
       type: object
       required: [data]
       properties: {data: {$ref: '#/components/schemas/RepairOrder'}}
+    IntakeAccessory:
+      type: object
+      required: [id, name, conditionNote]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        conditionNote: {type: [string, 'null']}
+    IntakeMedia:
+      type: object
+      required: [id, purpose, originalName, mimeType, byteSize, uploadedAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        purpose: {type: string, enum: [INTAKE, DIAGNOSIS, REPAIR, QC, HANDOVER, SIGNATURE]}
+        originalName: {type: string}
+        mimeType: {type: string}
+        byteSize: {type: integer}
+        uploadedAt: {type: [string, 'null'], format: date-time}
+    RepairOrderTimelineEvent:
+      type: object
+      required: [id, eventType, fromStatus, toStatus, actorType, publicPayload, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        eventType: {type: string}
+        fromStatus:
+          oneOf:
+            - {$ref: '#/components/schemas/RepairOrderStatus'}
+            - {type: 'null'}
+        toStatus:
+          oneOf:
+            - {$ref: '#/components/schemas/RepairOrderStatus'}
+            - {type: 'null'}
+        actorType: {type: string, enum: [USER, CUSTOMER_TOKEN, SYSTEM]}
+        publicPayload: {type: [object, 'null']}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    RepairOrderDetail:
+      allOf:
+        - {$ref: '#/components/schemas/RepairOrder'}
+        - type: object
+          required: [accessories, media, timeline]
+          properties:
+            accessories:
+              type: array
+              items: {$ref: '#/components/schemas/IntakeAccessory'}
+            media:
+              type: array
+              items: {$ref: '#/components/schemas/IntakeMedia'}
+            timeline:
+              type: array
+              items: {$ref: '#/components/schemas/RepairOrderTimelineEvent'}
+    RepairOrderDetailResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/RepairOrderDetail'}}
     RepairOrderListResponse:
       type: object
       required: [data, meta]

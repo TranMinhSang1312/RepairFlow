@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs PrismaService at runtime for DI. */
 
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { MediaPurpose, Prisma } from "@prisma/client";
+import { MediaPurpose, MembershipRole, Prisma, type RepairOrderStatus } from "@prisma/client";
 
 import { ApiException } from "../../common/api-exception.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
@@ -38,9 +38,151 @@ export interface CreateOrderData {
   requestId: string;
 }
 
+export interface RepairOrderCursor {
+  id: string;
+  updatedAt: Date;
+}
+
+export interface RepairOrderListFilters {
+  query: string | null;
+  statuses: RepairOrderStatus[] | null;
+  branchId: string | null;
+  technicianUserId: string | null;
+}
+
+const PAGE_SIZE = 25;
+
+const repairOrderInclude = {
+  customer: true,
+  device: true,
+  assignments: {
+    where: { unassignedAt: null },
+    orderBy: [{ assignedAt: "desc" as const }, { id: "desc" as const }],
+    take: 1,
+    select: { technicianUserId: true },
+  },
+} satisfies Prisma.RepairOrderInclude;
+
+const repairOrderDetailInclude = {
+  ...repairOrderInclude,
+  accessories: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+    select: { id: true, name: true, conditionNote: true },
+  },
+  media: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      purpose: true,
+      originalName: true,
+      mimeType: true,
+      byteSize: true,
+      uploadedAt: true,
+    },
+  },
+  events: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      eventType: true,
+      fromStatus: true,
+      toStatus: true,
+      actorType: true,
+      publicPayload: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.RepairOrderInclude;
+
 @Injectable()
 export class RepairOrdersRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async list(
+    tenant: TenantContext,
+    filters: RepairOrderListFilters,
+    cursor: RepairOrderCursor | null,
+  ) {
+    const technicianUserId =
+      tenant.role === MembershipRole.TECHNICIAN ? tenant.userId : filters.technicianUserId;
+    const cursorCondition: Prisma.RepairOrderWhereInput | undefined = cursor
+      ? {
+          OR: [
+            { updatedAt: { lt: cursor.updatedAt } },
+            { updatedAt: cursor.updatedAt, id: { lt: cursor.id } },
+          ],
+        }
+      : undefined;
+    const phoneQuery = filters.query ? this.normalizePhoneSearch(filters.query) : null;
+    const identifierQuery = filters.query
+      ? filters.query.toUpperCase().replace(/[^A-Z0-9]/g, "")
+      : null;
+    const queryPredicates: Prisma.RepairOrderWhereInput[] = filters.query
+      ? [
+          { code: { contains: filters.query, mode: "insensitive" } },
+          { customer: { name: { contains: filters.query, mode: "insensitive" } } },
+          { device: { model: { contains: filters.query, mode: "insensitive" } } },
+        ]
+      : [];
+    if (phoneQuery) {
+      queryPredicates.push({ customer: { phoneNormalized: { contains: phoneQuery } } });
+    }
+    if (identifierQuery) {
+      queryPredicates.push({
+        device: {
+          OR: [
+            { serialNormalized: { contains: identifierQuery, mode: "insensitive" } },
+            { imeiNormalized: { contains: identifierQuery } },
+          ],
+        },
+      });
+    }
+
+    const orders = await this.prisma.repairOrder.findMany({
+      where: {
+        shopId: tenant.shopId,
+        ...(filters.statuses ? { status: { in: filters.statuses } } : {}),
+        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(technicianUserId
+          ? { assignments: { some: { technicianUserId, unassignedAt: null } } }
+          : {}),
+        ...(cursorCondition ? { AND: [cursorCondition] } : {}),
+        ...(queryPredicates.length > 0 ? { OR: queryPredicates } : {}),
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: PAGE_SIZE + 1,
+      include: repairOrderInclude,
+    });
+
+    return { orders: orders.slice(0, PAGE_SIZE), hasMore: orders.length > PAGE_SIZE };
+  }
+
+  detail(tenant: TenantContext, repairOrderId: string) {
+    return this.prisma.repairOrder.findFirst({
+      where: {
+        shopId: tenant.shopId,
+        id: repairOrderId,
+        ...(tenant.role === MembershipRole.TECHNICIAN
+          ? { assignments: { some: { technicianUserId: tenant.userId, unassignedAt: null } } }
+          : {}),
+      },
+      include: repairOrderDetailInclude,
+    });
+  }
+
+  private normalizePhoneSearch(value: string): string | null {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length < 3) {
+      return null;
+    }
+    if (digits.startsWith("00")) {
+      return `+${digits.slice(2)}`;
+    }
+    if (digits.startsWith("0")) {
+      return `+84${digits.slice(1)}`;
+    }
+    return value.startsWith("+") ? `+${digits}` : digits;
+  }
 
   async loadIntakeResources(
     transaction: Prisma.TransactionClient,
