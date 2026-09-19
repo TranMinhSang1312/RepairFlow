@@ -3,13 +3,28 @@ import { z } from "zod";
 const nodeEnvironment = z.enum(["development", "test", "production"]);
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 
-const apiEnvironmentSchema = z.object({
-  NODE_ENV: nodeEnvironment.default("development"),
-  API_HOST: z.string().default("0.0.0.0"),
-  API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-  LOG_LEVEL: logLevel.default("info"),
-  DATABASE_URL: z.string().min(1),
-});
+const apiEnvironmentSchema = z
+  .object({
+    NODE_ENV: nodeEnvironment.default("development"),
+    API_HOST: z.string().default("0.0.0.0"),
+    API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+    LOG_LEVEL: logLevel.default("info"),
+    DATABASE_URL: z.string().min(1),
+    ACCESS_TOKEN_SECRET: z.string().min(32),
+    REFRESH_COOKIE_NAME: z.string().min(1).default("repairflow_refresh"),
+  })
+  .superRefine((environment, context) => {
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.ACCESS_TOKEN_SECRET.startsWith("replace-with-")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["ACCESS_TOKEN_SECRET"],
+        message: "Production requires a non-placeholder access-token secret.",
+      });
+    }
+  });
 
 const workerEnvironmentSchema = z.object({
   NODE_ENV: nodeEnvironment.default("development"),

@@ -4,13 +4,18 @@ import { loadWorkspaceEnvironment } from "@repairflow/config/node";
 import { randomUUID } from "node:crypto";
 import { LoggerModule } from "nestjs-pino";
 
+import { PrismaModule } from "./infra/database/prisma.module.js";
 import { HealthController } from "./health/health.controller.js";
+import { HTTP_LOG_REDACTION } from "./logging.js";
+import { IdentityModule } from "./modules/identity/identity.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
 
 @Module({
   imports: [
+    PrismaModule,
+    IdentityModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,
@@ -21,10 +26,7 @@ const environment = parseApiEnvironment(process.env);
           response.setHeader("X-Request-Id", requestId);
           return requestId;
         },
-        redact: {
-          paths: ["req.headers.authorization", "req.headers.cookie", "res.headers.set-cookie"],
-          censor: "[REDACTED]",
-        },
+        redact: HTTP_LOG_REDACTION,
       },
     }),
   ],

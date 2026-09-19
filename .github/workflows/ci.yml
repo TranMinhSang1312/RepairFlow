@@ -12,11 +12,27 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: repairflow
+          POSTGRES_PASSWORD: repairflow
+          POSTGRES_DB: repairflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U repairflow -d repairflow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://repairflow:repairflow@localhost:5432/repairflow?schema=public
       NODE_ENV: test
       LOG_LEVEL: silent
       NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
+      ACCESS_TOKEN_SECRET: test-secret-that-is-at-least-32-characters-long
+      REFRESH_COOKIE_NAME: repairflow_refresh
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +53,9 @@ jobs:
 
       - name: Validate Prisma schema
         run: pnpm db:validate
+
+      - name: Apply Prisma migrations
+        run: pnpm exec prisma migrate deploy
 
       - name: Check formatting
         run: pnpm format:check
