@@ -10,6 +10,9 @@ import type {
   RepairOrderFilters,
   RepairOrderPage,
   RepairOrderReceipt,
+  LoginInput,
+  RegisterOwnerInput,
+  CurrentUser,
 } from "./types";
 
 interface DataResponse<T> {
@@ -52,6 +55,19 @@ export interface RepairOrderReadApi {
   getRepairOrder(shopId: string, repairOrderId: string): Promise<RepairOrderDetail>;
 }
 
+export interface AuthApi {
+  restoreSession(): Promise<AuthData>;
+  login(input: LoginInput): Promise<AuthData>;
+  registerOwner(input: RegisterOwnerInput): Promise<AuthData>;
+  logout(): Promise<void>;
+  getMe(): Promise<CurrentUser>;
+}
+
+export interface SessionCallbacks {
+  onSession?(auth: AuthData): void;
+  onSessionExpired?(): void;
+}
+
 type RequestOptions = RequestInit & {
   shopId?: string;
   idempotencyKey?: string;
@@ -65,6 +81,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
   constructor(
     private readonly baseUrl = "/api/v1",
     private readonly fetcher: typeof fetch = fetch,
+    private readonly callbacks: SessionCallbacks = {},
   ) {}
 
   restoreSession(): Promise<AuthData> {
@@ -84,7 +101,50 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
     if (!response.ok) throw await apiErrorFromResponse(response);
     const body = (await response.json()) as DataResponse<AuthData>;
     this.accessToken = body.data.accessToken;
+    this.callbacks.onSession?.(body.data);
     return body.data;
+  }
+
+  async login(input: LoginInput): Promise<AuthData> {
+    return this.authenticate("/auth/login", input);
+  }
+
+  async registerOwner(input: RegisterOwnerInput): Promise<AuthData> {
+    return this.authenticate("/auth/register-owner", input);
+  }
+
+  private async authenticate(path: string, input: LoginInput | RegisterOwnerInput) {
+    const response = await this.fetcher(`${this.baseUrl}${path}`, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) throw await apiErrorFromResponse(response);
+    const body = (await response.json()) as DataResponse<AuthData>;
+    this.accessToken = body.data.accessToken;
+    this.callbacks.onSession?.(body.data);
+    return body.data;
+  }
+
+  async getMe(): Promise<CurrentUser> {
+    const response = await this.request<DataResponse<CurrentUser>>("/me");
+    return response.data;
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.request<void>("/auth/logout", { method: "POST" });
+    } catch (error) {
+      if (!(error instanceof RepairFlowApiError) || error.code !== "SESSION_EXPIRED") throw error;
+    }
+    this.clearSession();
+  }
+
+  clearSession(): void {
+    this.accessToken = null;
+    this.callbacks.onSessionExpired?.();
   }
 
   async searchCustomers(shopId: string, query: string): Promise<Customer[]> {
@@ -226,11 +286,19 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
       credentials: "same-origin",
       cache: "no-store",
     });
-    if (response.status === 401 && retryAuth) {
-      await this.restoreSession();
+    if (response.status === 401 && retryAuth && path !== "/auth/refresh") {
+      try {
+        await this.restoreSession();
+      } catch (error) {
+        if (error instanceof RepairFlowApiError && error.code === "SESSION_EXPIRED") {
+          this.clearSession();
+        }
+        throw error;
+      }
       return this.request<T>(path, { ...options, retryAuth: false });
     }
     if (!response.ok) throw await apiErrorFromResponse(response);
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
 }

@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { safeErrorMessage } from "@/lib/api/errors";
 import { BrowserIntakeApi, type RepairOrderReadApi } from "@/lib/api/intake-api";
-import type { AuthData, Membership, RepairOrderDetail, RepairOrderStatus } from "@/lib/api/types";
+import type {
+  AuthData,
+  CurrentUser,
+  Membership,
+  RepairOrderDetail,
+  RepairOrderStatus,
+} from "@/lib/api/types";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 type WorkspaceTab = "overview" | "timeline";
 type LoadState = "loading" | "success" | "error";
@@ -29,6 +36,7 @@ interface RepairOrderWorkspaceScreenProps {
   api?: RepairOrderReadApi;
   search?: string;
   replaceUrl?: (url: string) => void;
+  sessionUser?: CurrentUser | undefined;
 }
 
 function activeMemberships(auth: AuthData): Membership[] {
@@ -63,6 +71,7 @@ export function RepairOrderWorkspaceScreen({
   api: suppliedApi,
   search = "",
   replaceUrl = () => undefined,
+  sessionUser,
 }: RepairOrderWorkspaceScreenProps) {
   const [api] = useState<RepairOrderReadApi>(() => suppliedApi ?? new BrowserIntakeApi());
   const params = useMemo(() => new URLSearchParams(search), [search]);
@@ -73,8 +82,23 @@ export function RepairOrderWorkspaceScreen({
   const [error, setError] = useState("");
   const [tab, setTab] = useState<WorkspaceTab>("overview");
   const initialShopId = useState(() => params.get("shopId"))[0];
+  const sharedSessionInitialized = useRef(false);
 
   useEffect(() => {
+    if (sessionUser) {
+      if (sharedSessionInitialized.current) return;
+      sharedSessionInitialized.current = true;
+      const session = { accessToken: "", expiresInSeconds: 0, user: sessionUser };
+      const memberships = activeMemberships(session);
+      const initial = memberships.find((item) => item.shopId === initialShopId) ?? memberships[0];
+      setAuth(session);
+      setShopId(initial?.shopId ?? "");
+      if (!initial) {
+        setError("Tài khoản chưa có quyền truy cập cửa hàng đang hoạt động.");
+        setLoadState("error");
+      }
+      return;
+    }
     let active = true;
     void api
       .restoreSession()
@@ -97,7 +121,7 @@ export function RepairOrderWorkspaceScreen({
     return () => {
       active = false;
     };
-  }, [api, initialShopId]);
+  }, [api, initialShopId, sessionUser]);
 
   useEffect(() => {
     if (!auth) return;
@@ -175,12 +199,12 @@ export function RepairOrderWorkspaceScreen({
 
   return (
     <main className="workspace-shell">
-      <header className="staff-header workspace-nav">
-        <Link className="brand" href={`/orders?shopId=${encodeURIComponent(shopId)}`}>
-          <span>R</span>RepairFlow
-        </Link>
-        <label className="shop-selector">
-          <span>Cửa hàng đang xem</span>
+      <nav className="workspace-breadcrumb" aria-label="Breadcrumb">
+        <Link href={`/orders?shopId=${encodeURIComponent(shopId)}`}>Phiếu sửa chữa</Link>
+        <span>/</span>
+        <strong>{order.code}</strong>
+        <label className="shop-selector workspace-shop-selector">
+          <span>Cửa hàng</span>
           <select
             aria-label="Cửa hàng đang xem"
             value={shopId}
@@ -193,12 +217,6 @@ export function RepairOrderWorkspaceScreen({
             ))}
           </select>
         </label>
-      </header>
-
-      <nav className="workspace-breadcrumb" aria-label="Breadcrumb">
-        <Link href={`/orders?shopId=${encodeURIComponent(shopId)}`}>Phiếu sửa chữa</Link>
-        <span>/</span>
-        <strong>{order.code}</strong>
       </nav>
 
       <section className="workspace-heading">
@@ -420,6 +438,7 @@ export function RepairOrderWorkspaceScreen({
 }
 
 export function RepairOrderWorkspace({ repairOrderId }: { repairOrderId: string }) {
+  const auth = useAuth();
   const router = useRouter();
   const params = useSearchParams();
   return (
@@ -427,6 +446,8 @@ export function RepairOrderWorkspace({ repairOrderId }: { repairOrderId: string 
       repairOrderId={repairOrderId}
       search={params.toString()}
       replaceUrl={(url) => router.replace(url, { scroll: false })}
+      api={auth.api}
+      sessionUser={auth.user ?? undefined}
     />
   );
 }

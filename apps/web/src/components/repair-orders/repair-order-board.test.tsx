@@ -79,6 +79,16 @@ function fakeApi(overrides: Partial<RepairOrderReadApi> = {}): RepairOrderReadAp
 }
 
 describe("RepairOrderBoardScreen", () => {
+  it("uses the shared authenticated session without rotating refresh on mount", async () => {
+    const api = fakeApi();
+    render(
+      <RepairOrderBoardScreen api={api} search={`shopId=${shopId}`} sessionUser={auth.user} />,
+    );
+
+    expect(await screen.findByText("RFD-2609-00001")).toBeTruthy();
+    expect(api.restoreSession).not.toHaveBeenCalled();
+  });
+
   it("keeps filters in the URL and renders a card at a 360px viewport", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 360 });
     window.dispatchEvent(new Event("resize"));
