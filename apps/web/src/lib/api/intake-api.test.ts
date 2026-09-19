@@ -54,14 +54,20 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("BrowserIntakeApi", () => {
-  it("calls the default browser fetch with the global context", async () => {
+  it.each([
+    ["default fetch", undefined],
+    ["explicit browser fetch", "explicit"],
+  ])("calls %s with the global context", async (_label, mode) => {
     const browserFetch = vi.fn(function (this: unknown) {
       if (this !== globalThis) throw new TypeError("Illegal invocation");
       return Promise.resolve(jsonResponse(authBody));
     });
     vi.stubGlobal("fetch", browserFetch);
 
-    const api = new BrowserIntakeApi();
+    const api =
+      mode === "explicit"
+        ? new BrowserIntakeApi("/api/v1", globalThis.fetch)
+        : new BrowserIntakeApi();
     await expect(
       api.login({ email: "owner@example.com", password: "very-secure-password" }),
     ).resolves.toEqual(authBody.data);
