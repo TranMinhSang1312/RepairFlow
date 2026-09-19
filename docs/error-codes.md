@@ -75,6 +75,7 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 422 | `MEDIA_TOO_LARGE` | File exceeds configured size. |
 | 409 | `MEDIA_UPLOAD_INCOMPLETE` | Intake references an upload not finalized. |
 | 429 | `AI_BUDGET_EXCEEDED` | Shop AI usage budget is exhausted. |
+| 503 | `STORAGE_UNAVAILABLE` | Private object storage is temporarily unavailable. |
 | 503 | `AI_PROVIDER_UNAVAILABLE` | Provider is unavailable; manual flow remains usable. |
 | 502 | `AI_OUTPUT_INVALID` | Provider output failed schema validation. |
 | 409 | `AI_DRAFT_ALREADY_APPLIED` | The same draft cannot be applied twice. |

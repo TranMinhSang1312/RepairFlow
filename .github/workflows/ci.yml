@@ -66,6 +66,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Start object storage
+        run: |
+          docker compose up -d minio
+          docker compose run --rm minio-init
+
       - name: Test
         run: pnpm test
 
