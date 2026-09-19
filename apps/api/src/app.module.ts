@@ -7,7 +7,7 @@ import { LoggerModule } from "nestjs-pino";
 import { PrismaModule } from "./infra/database/prisma.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { HTTP_LOG_REDACTION } from "./logging.js";
-import { IdentityModule } from "./modules/identity/identity.module.js";
+import { AuthorizationModule } from "./common/authorization/authorization.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -15,7 +15,7 @@ const environment = parseApiEnvironment(process.env);
 @Module({
   imports: [
     PrismaModule,
-    IdentityModule,
+    AuthorizationModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,
