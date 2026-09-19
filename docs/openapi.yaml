@@ -278,7 +278,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/PresignMediaRequest'}
+            schema: {$ref: '#/components/schemas/PresignIntakeMediaRequest'}
       responses:
         '201':
           description: Signed upload for a provisional media asset
@@ -287,6 +287,7 @@ paths:
               schema: {$ref: '#/components/schemas/PresignMediaResponse'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '422': {$ref: '#/components/responses/ValidationError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
 
   /api/v1/repair-orders/{repairOrderId}:
     get:
@@ -661,6 +662,9 @@ components:
       headers:
         Retry-After: {schema: {type: integer}}
       content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    ServiceUnavailable:
+      description: A required external service is temporarily unavailable
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
     PublicLinkInvalid:
       description: Public link is invalid or revoked
       content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
@@ -879,10 +883,16 @@ components:
       required: [purpose, originalName, mimeType, byteSize]
       properties:
         purpose: {type: string, enum: [INTAKE, DIAGNOSIS, REPAIR, QC, HANDOVER, SIGNATURE]}
-        originalName: {type: string, maxLength: 255}
+        originalName: {type: string, minLength: 1, maxLength: 255}
         mimeType: {type: string, enum: [image/jpeg, image/png, image/webp]}
         byteSize: {type: integer, minimum: 1, maximum: 15000000}
         checksumSha256: {type: [string, 'null'], pattern: '^[a-fA-F0-9]{64}$'}
+    PresignIntakeMediaRequest:
+      allOf:
+        - {$ref: '#/components/schemas/PresignMediaRequest'}
+        - type: object
+          properties:
+            purpose: {type: string, const: INTAKE}
     PresignMediaResponse:
       type: object
       required: [data]

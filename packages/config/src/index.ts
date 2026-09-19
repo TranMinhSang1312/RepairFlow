@@ -12,6 +12,11 @@ const apiEnvironmentSchema = z
     DATABASE_URL: z.string().min(1),
     ACCESS_TOKEN_SECRET: z.string().min(32),
     REFRESH_COOKIE_NAME: z.string().min(1).default("repairflow_refresh"),
+    OBJECT_STORAGE_ENDPOINT: z.string().url().default("http://localhost:9000"),
+    OBJECT_STORAGE_REGION: z.string().min(1).default("us-east-1"),
+    OBJECT_STORAGE_BUCKET: z.string().min(1).default("repairflow-private"),
+    OBJECT_STORAGE_ACCESS_KEY: z.string().min(1).default("repairflow"),
+    OBJECT_STORAGE_SECRET_KEY: z.string().min(8).default("local-development-only"),
   })
   .superRefine((environment, context) => {
     if (
@@ -22,6 +27,16 @@ const apiEnvironmentSchema = z
         code: "custom",
         path: ["ACCESS_TOKEN_SECRET"],
         message: "Production requires a non-placeholder access-token secret.",
+      });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.OBJECT_STORAGE_SECRET_KEY === "local-development-only"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["OBJECT_STORAGE_SECRET_KEY"],
+        message: "Production requires a non-default object-storage secret.",
       });
     }
   });

@@ -12,6 +12,7 @@ describe("environment parsing", () => {
 
     expect(api.API_PORT).toBe(3001);
     expect(api.LOG_LEVEL).toBe("info");
+    expect(api.OBJECT_STORAGE_BUCKET).toBe("repairflow-private");
     expect(web.NEXT_PUBLIC_API_URL).toBe("http://localhost:3001/api/v1");
   });
 
@@ -38,6 +39,16 @@ describe("environment parsing", () => {
         NODE_ENV: "production",
         DATABASE_URL: "postgresql://localhost/repairflow",
         ACCESS_TOKEN_SECRET: "replace-with-at-least-32-random-characters",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects local object-storage credentials in production", () => {
+    expect(() =>
+      parseApiEnvironment({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "production-secret-that-is-at-least-32-characters",
       }),
     ).toThrow();
   });
