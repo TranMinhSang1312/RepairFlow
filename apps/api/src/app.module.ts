@@ -9,6 +9,7 @@ import { HealthController } from "./health/health.controller.js";
 import { HTTP_LOG_REDACTION } from "./logging.js";
 import { AuthorizationModule } from "./common/authorization/authorization.module.js";
 import { CustomersModule } from "./modules/customers/customers.module.js";
+import { DevicesModule } from "./modules/devices/devices.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -18,6 +19,7 @@ const environment = parseApiEnvironment(process.env);
     PrismaModule,
     AuthorizationModule,
     CustomersModule,
+    DevicesModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,
