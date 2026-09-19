@@ -160,4 +160,32 @@ describe("BrowserIntakeApi", () => {
     expect(refreshCalls).toBe(2);
     expect(customerCalls).toBe(4);
   });
+
+  it("serializes repeated board status filters and sends the active tenant", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse({ data: [], meta: { nextCursor: null } }));
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.restoreSession();
+    await api.listRepairOrders(
+      authBody.data.user.memberships[0]!.shopId,
+      {
+        query: "RF-01",
+        statuses: ["RECEIVED", "REPAIRING"],
+        branchId: "33333333-3333-4333-8333-333333333333",
+      },
+      "next-page",
+    );
+
+    const [input, init] = fetcher.mock.calls[1]!;
+    const url = new URL(String(input), "https://repairflow.test");
+    expect(url.pathname).toBe("/api/v1/repair-orders");
+    expect(url.searchParams.getAll("status")).toEqual(["RECEIVED", "REPAIRING"]);
+    expect(url.searchParams.get("query")).toBe("RF-01");
+    expect(url.searchParams.get("cursor")).toBe("next-page");
+    expect(new Headers(init?.headers).get("X-Shop-Id")).toBe(
+      authBody.data.user.memberships[0]!.shopId,
+    );
+  });
 });

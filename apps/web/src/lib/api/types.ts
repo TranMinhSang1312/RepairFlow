@@ -68,6 +68,21 @@ export interface NewDevice {
 
 export type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 
+export type RepairOrderStatus =
+  | "RECEIVED"
+  | "DIAGNOSING"
+  | "AWAITING_APPROVAL"
+  | "APPROVED"
+  | "WAITING_PARTS"
+  | "REPAIRING"
+  | "QUALITY_CHECK"
+  | "READY_FOR_PICKUP"
+  | "COMPLETED"
+  | "VOIDED";
+
+export type CompletionOutcome =
+  "REPAIRED" | "DECLINED_QUOTE" | "UNREPAIRABLE" | "NO_FAULT_FOUND" | "CUSTOMER_CANCELLED";
+
 export interface IntakeAccessory {
   name: string;
   conditionNote?: string | null;
@@ -98,6 +113,68 @@ export interface RepairOrderReceipt {
   device: Device;
   promisedAt: string | null;
   receivedAt: string;
+}
+
+export interface RepairOrderSummary {
+  id: string;
+  code: string;
+  status: RepairOrderStatus;
+  completionOutcome: CompletionOutcome | null;
+  priority: Priority;
+  branchId: string;
+  reportedProblem: string;
+  intakeCondition: string;
+  assignedTechnicianUserId: string | null;
+  customer: Customer;
+  device: Device;
+  promisedAt: string | null;
+  receivedAt: string;
+  readyAt: string | null;
+  returnedAt: string | null;
+  lockVersion: number;
+}
+
+export interface IntakeAccessoryView {
+  id: string;
+  name: string;
+  conditionNote: string | null;
+}
+
+export interface IntakeMediaView {
+  id: string;
+  purpose: "INTAKE" | "DIAGNOSIS" | "REPAIR" | "QC" | "HANDOVER" | "SIGNATURE";
+  originalName: string;
+  mimeType: string;
+  byteSize: number;
+  uploadedAt: string | null;
+}
+
+export interface RepairOrderTimelineEvent {
+  id: string;
+  eventType: string;
+  fromStatus: RepairOrderStatus | null;
+  toStatus: RepairOrderStatus | null;
+  actorType: "USER" | "CUSTOMER_TOKEN" | "SYSTEM";
+  publicPayload: unknown | null;
+  createdAt: string;
+}
+
+export interface RepairOrderDetail extends RepairOrderSummary {
+  accessories: IntakeAccessoryView[];
+  media: IntakeMediaView[];
+  timeline: RepairOrderTimelineEvent[];
+}
+
+export interface RepairOrderFilters {
+  query?: string;
+  statuses?: RepairOrderStatus[];
+  branchId?: string;
+  technicianUserId?: string;
+}
+
+export interface RepairOrderPage {
+  data: RepairOrderSummary[];
+  meta: { nextCursor: string | null };
 }
 
 export interface ApiErrorDetail {
