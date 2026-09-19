@@ -743,12 +743,24 @@ components:
           type: array
           items:
             type: object
-            required: [shopId, shopName, role, status]
+            required: [shopId, shopName, role, status, timezone, intakePhotoMinimum, branches]
             properties:
               shopId: {$ref: '#/components/schemas/Uuid'}
               shopName: {type: string}
               role: {type: string, enum: [OWNER, RECEPTIONIST, TECHNICIAN]}
               status: {type: string, enum: [INVITED, ACTIVE, INACTIVE]}
+              timezone: {type: string, example: Asia/Ho_Chi_Minh}
+              intakePhotoMinimum: {type: integer, minimum: 1}
+              branches:
+                type: array
+                description: Active branches available in this membership's shop; empty for inactive memberships.
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [id, name]
+                  properties:
+                    id: {$ref: '#/components/schemas/Uuid'}
+                    name: {type: string}
     CreateCustomerRequest:
       type: object
       additionalProperties: false

@@ -3,7 +3,14 @@ import type { Prisma } from "@prisma/client";
 export const identityUserInclude = {
   memberships: {
     include: {
-      shop: true,
+      shop: {
+        include: {
+          branches: {
+            where: { isActive: true },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          },
+        },
+      },
     },
   },
 } satisfies Prisma.UserInclude;
@@ -27,6 +34,12 @@ export interface CurrentUser {
     shopName: string;
     role: string;
     status: string;
+    timezone: string;
+    intakePhotoMinimum: number;
+    branches: Array<{
+      id: string;
+      name: string;
+    }>;
   }>;
 }
 

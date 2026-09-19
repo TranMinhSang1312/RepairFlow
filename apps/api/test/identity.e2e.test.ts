@@ -261,12 +261,49 @@ describe("identity API", () => {
 
   it("returns the current user and revokes the refresh session on logout", async () => {
     const fixture = await registerFixture();
+    await prisma.shop.update({
+      where: { id: fixture.shopId },
+      data: { intakePhotoMinimum: 2 },
+    });
+    await prisma.branch.create({
+      data: { shopId: fixture.shopId, name: "Inactive branch", isActive: false },
+    });
+    const inactiveShop = await prisma.shop.create({
+      data: { name: "Inactive membership shop", slug: `inactive-${randomUUID()}` },
+    });
+    createdShopIds.push(inactiveShop.id);
+    await prisma.branch.create({
+      data: { shopId: inactiveShop.id, name: "Hidden branch" },
+    });
+    await prisma.shopMembership.create({
+      data: {
+        shopId: inactiveShop.id,
+        userId: fixture.userId,
+        role: "RECEPTIONIST",
+        status: "INACTIVE",
+      },
+    });
     const me = await request(app.getHttpServer())
       .get("/api/v1/me")
       .set("Authorization", `Bearer ${fixture.accessToken}`)
       .expect(200);
 
     expect(me.body.data).toMatchObject({ id: fixture.userId, email: fixture.email });
+    const activeMembership = me.body.data.memberships.find(
+      (membership: { shopId: string }) => membership.shopId === fixture.shopId,
+    );
+    expect(activeMembership).toMatchObject({
+      shopId: fixture.shopId,
+      timezone: "Asia/Ho_Chi_Minh",
+      intakePhotoMinimum: 2,
+      branches: [{ id: expect.any(String), name: "Main branch" }],
+    });
+    expect(activeMembership.branches).toHaveLength(1);
+    expect(
+      me.body.data.memberships.find(
+        (membership: { shopId: string }) => membership.shopId === inactiveShop.id,
+      ),
+    ).toMatchObject({ status: "INACTIVE", branches: [] });
 
     const logout = await request(app.getHttpServer())
       .post("/api/v1/auth/logout")
