@@ -50,6 +50,23 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("BrowserIntakeApi", () => {
+  it("registers and logs in without persisting credentials", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(authBody, 201));
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.registerOwner({
+      email: "owner@example.com",
+      password: "very-secure-password",
+      displayName: "Owner",
+      shopName: "Repair Shop",
+      branchName: "Main branch",
+    });
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(String(url)).toBe("/api/v1/auth/register-owner");
+    expect(JSON.parse(String(init?.body))).not.toHaveProperty("confirmPassword");
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("keeps the access token in memory and sends tenant plus idempotency headers", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -159,6 +176,60 @@ describe("BrowserIntakeApi", () => {
 
     expect(refreshCalls).toBe(2);
     expect(customerCalls).toBe(4);
+  });
+
+  it("moves the shared session to anonymous when refresh reuse is rejected", async () => {
+    const expired = vi.fn();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: { code: "AUTH_REQUIRED", message: "expired", requestId: "one" } },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: { code: "SESSION_EXPIRED", message: "reused", requestId: "two" } },
+          401,
+        ),
+      );
+    const api = new BrowserIntakeApi("/api/v1", fetcher, { onSessionExpired: expired });
+    await api.restoreSession();
+    await expect(api.searchCustomers("shop", "test")).rejects.toMatchObject({
+      code: "SESSION_EXPIRED",
+    });
+    expect(expired).toHaveBeenCalledOnce();
+  });
+
+  it("sends bearer and cookie credentials on logout, then clears memory", async () => {
+    const expired = vi.fn();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const api = new BrowserIntakeApi("/api/v1", fetcher, { onSessionExpired: expired });
+    await api.restoreSession();
+    await api.logout();
+    const [, init] = fetcher.mock.calls[1]!;
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer access-token-memory-only");
+    expect(init?.credentials).toBe("same-origin");
+    expect(expired).toHaveBeenCalledOnce();
+  });
+
+  it("reloads /me without rotating the refresh session", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse({ data: authBody.data.user }));
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.restoreSession();
+    await expect(api.getMe()).resolves.toEqual(authBody.data.user);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/v1/auth/refresh",
+      "/api/v1/me",
+    ]);
   });
 
   it("serializes repeated board status filters and sends the active tenant", async () => {

@@ -15,6 +15,8 @@ const SAFE_MESSAGES: Readonly<Record<string, string>> = {
   STORAGE_UNAVAILABLE: "Kho ảnh đang tạm thời gián đoạn. Hãy thử lại.",
   VALIDATION_FAILED: "Một số thông tin chưa hợp lệ. Hãy kiểm tra các trường được đánh dấu.",
   RATE_LIMITED: "Bạn thao tác quá nhanh. Vui lòng chờ rồi thử lại.",
+  EMAIL_ALREADY_REGISTERED: "Email này đã được đăng ký.",
+  NETWORK_RESPONSE_INVALID: "Máy chủ trả về phản hồi không hợp lệ. Hãy thử lại.",
 };
 
 export class RepairFlowApiError extends Error {

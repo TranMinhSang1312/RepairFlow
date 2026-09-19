@@ -29,6 +29,19 @@ export interface AuthData {
   user: CurrentUser;
 }
 
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface RegisterOwnerInput {
+  email: string;
+  password: string;
+  displayName: string;
+  shopName: string;
+  branchName: string;
+}
+
 export interface Customer {
   id: string;
   name: string;

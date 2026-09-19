@@ -6,7 +6,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { safeErrorMessage } from "@/lib/api/errors";
 import { BrowserIntakeApi, type RepairOrderReadApi } from "@/lib/api/intake-api";
-import type { AuthData, Membership, RepairOrderStatus, RepairOrderSummary } from "@/lib/api/types";
+import type {
+  AuthData,
+  CurrentUser,
+  Membership,
+  RepairOrderStatus,
+  RepairOrderSummary,
+} from "@/lib/api/types";
+import { useAuth } from "@/lib/auth/auth-provider";
 import {
   parseBoardFilters,
   REPAIR_ORDER_STATUSES,
@@ -59,6 +66,7 @@ export interface RepairOrderBoardScreenProps {
   search?: string;
   replaceUrl?: (url: string) => void;
   pollIntervalMs?: number;
+  sessionUser?: CurrentUser | undefined;
 }
 
 function activeMemberships(auth: AuthData): Membership[] {
@@ -87,6 +95,7 @@ export function RepairOrderBoardScreen({
   search = "",
   replaceUrl = () => undefined,
   pollIntervalMs = 30_000,
+  sessionUser,
 }: RepairOrderBoardScreenProps) {
   const [api] = useState<RepairOrderReadApi>(() => suppliedApi ?? new BrowserIntakeApi());
   const [auth, setAuth] = useState<AuthData | null>(null);
@@ -106,10 +115,23 @@ export function RepairOrderBoardScreen({
 
   const searchParams = useMemo(() => new URLSearchParams(search), [search]);
   const initialShopId = useRef(searchParams.get("shopId"));
+  const sharedSessionInitialized = useRef(false);
 
   useEffect(() => setQueryDraft(filters.query), [filters.query]);
 
   useEffect(() => {
+    if (sessionUser) {
+      if (sharedSessionInitialized.current) return;
+      sharedSessionInitialized.current = true;
+      const session = { accessToken: "", expiresInSeconds: 0, user: sessionUser };
+      const memberships = activeMemberships(session);
+      const requestedShop = initialShopId.current;
+      const initial = memberships.find((item) => item.shopId === requestedShop) ?? memberships[0];
+      setAuth(session);
+      setShopId(initial?.shopId ?? "");
+      if (!initial) setAuthError("Tài khoản chưa có quyền truy cập cửa hàng đang hoạt động.");
+      return;
+    }
     let active = true;
     void api
       .restoreSession()
@@ -128,7 +150,7 @@ export function RepairOrderBoardScreen({
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [api, sessionUser]);
 
   useEffect(() => {
     if (!auth) return;
@@ -252,26 +274,6 @@ export function RepairOrderBoardScreen({
 
   return (
     <main className="board-shell">
-      <header className="staff-header board-header">
-        <Link className="brand" href="/orders">
-          <span>R</span>RepairFlow
-        </Link>
-        <label className="shop-selector">
-          <span>Cửa hàng đang xem</span>
-          <select
-            aria-label="Cửa hàng đang xem"
-            value={shopId}
-            onChange={(event) => changeShop(event.target.value)}
-          >
-            {memberships.map((item) => (
-              <option key={item.shopId} value={item.shopId}>
-                {item.shopName}
-              </option>
-            ))}
-          </select>
-        </label>
-      </header>
-
       <section className="board-title-row">
         <div>
           <p className="eyebrow">Bảng vận hành · {membership.role}</p>
@@ -281,6 +283,20 @@ export function RepairOrderBoardScreen({
           </p>
         </div>
         <div className="board-title-actions">
+          <label className="shop-selector">
+            <span>Cửa hàng</span>
+            <select
+              aria-label="Cửa hàng đang xem"
+              value={shopId}
+              onChange={(event) => changeShop(event.target.value)}
+            >
+              {memberships.map((item) => (
+                <option key={item.shopId} value={item.shopId}>
+                  {item.shopName}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             className="button button-secondary"
             disabled={refreshing}
@@ -483,6 +499,7 @@ export function RepairOrderBoardScreen({
 }
 
 export function RepairOrderBoard() {
+  const auth = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -491,6 +508,8 @@ export function RepairOrderBoard() {
       pathname={pathname}
       search={params.toString()}
       replaceUrl={(url) => router.replace(url, { scroll: false })}
+      api={auth.api}
+      sessionUser={auth.user ?? undefined}
     />
   );
 }

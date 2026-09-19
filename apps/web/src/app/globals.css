@@ -1490,6 +1490,255 @@ body > main.workspace-shell {
   }
 }
 
+/* RF-019 authentication and shared staff shell */
+.staff-app-shell {
+  min-height: 100vh;
+}
+
+.global-staff-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 28px;
+  min-height: 72px;
+  border-bottom: 1px solid rgba(220, 229, 223, 0.9);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px max(16px, calc((100vw - 1480px) / 2));
+  backdrop-filter: blur(14px);
+}
+
+.global-staff-header nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.global-staff-header nav a {
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.global-staff-header nav a[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.staff-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.staff-account > div {
+  display: grid;
+  text-align: right;
+}
+
+.staff-account small {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.global-notice {
+  width: min(1480px, calc(100% - 32px));
+  margin: 14px auto 0;
+}
+
+.session-state {
+  display: grid;
+  min-height: 70vh;
+  place-content: center;
+  justify-items: center;
+  padding: 32px;
+  text-align: center;
+}
+
+.session-state h1 {
+  margin: 18px 0 4px;
+}
+
+.session-state p {
+  max-width: 520px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+body > main.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(390px, 1.1fr);
+  width: min(1080px, calc(100% - 32px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 48px 0;
+}
+
+.auth-intro,
+.auth-card {
+  padding: clamp(30px, 6vw, 68px);
+}
+
+.auth-intro {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 28px 0 0 28px;
+  background: #153d2b;
+  color: white;
+}
+
+.auth-intro .brand,
+.auth-intro .eyebrow {
+  color: white;
+}
+
+.auth-intro h1 {
+  margin: 12px 0;
+  font-size: clamp(2.5rem, 6vw, 4.7rem);
+  letter-spacing: -0.06em;
+  line-height: 0.96;
+}
+
+.auth-intro p,
+.auth-intro li {
+  color: #d9ebe1;
+  line-height: 1.6;
+}
+
+.auth-intro ul {
+  display: grid;
+  gap: 10px;
+  margin: 32px 0 0;
+  padding-left: 20px;
+  font-size: 0.86rem;
+}
+
+.auth-card {
+  display: grid;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 28px 28px 0;
+  background: white;
+  box-shadow: var(--shadow);
+}
+
+.auth-form {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-form h2 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.auth-form > div:first-child p,
+.auth-switch {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-submit {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
+}
+
+.auth-switch {
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+.auth-switch a {
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.workspace-shop-selector {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .global-staff-header {
+    grid-template-columns: auto 1fr;
+    gap: 8px 14px;
+  }
+  .global-staff-header nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .staff-account {
+    justify-self: end;
+  }
+  .staff-account > div {
+    display: none;
+  }
+  body > main.auth-shell {
+    grid-template-columns: 1fr;
+    padding: 16px 0;
+  }
+  .auth-intro {
+    gap: 34px;
+    border-radius: 22px 22px 0 0;
+  }
+  .auth-intro ul {
+    display: none;
+  }
+  .auth-card {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0 0 22px 22px;
+  }
+}
+
+@media (max-width: 380px) {
+  .global-staff-header {
+    padding-inline: 10px;
+  }
+  .global-staff-header .brand {
+    font-size: 0;
+  }
+  .global-staff-header nav a {
+    padding-inline: 9px;
+  }
+  .staff-account .button {
+    padding-inline: 10px;
+  }
+  .auth-intro,
+  .auth-card {
+    padding: 24px 20px;
+  }
+  .board-title-actions {
+    flex-wrap: wrap;
+  }
+  .board-title-actions .shop-selector {
+    width: 100%;
+  }
+  .board-title-actions .shop-selector select {
+    min-width: 0;
+    width: 100%;
+  }
+  .workspace-breadcrumb {
+    flex-wrap: wrap;
+  }
+  .workspace-shop-selector {
+    width: 100%;
+    margin-left: 0;
+  }
+  .workspace-shop-selector select {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 @media (max-width: 380px) {
   .brand {
     font-size: 0;

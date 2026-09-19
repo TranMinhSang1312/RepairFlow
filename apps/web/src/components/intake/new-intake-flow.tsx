@@ -21,6 +21,7 @@ import {
   type IntakeDraft,
   type IntakeFieldErrors,
 } from "@/lib/intake/intake-form";
+import { useOptionalAuth } from "@/lib/auth/auth-provider";
 
 type Step = 1 | 2 | 3 | 4;
 type AsyncState = "idle" | "loading" | "success" | "error";
@@ -81,7 +82,10 @@ function eligibleMemberships(auth: AuthData): Membership[] {
 }
 
 export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
-  const [api] = useState<IntakeApi>(() => suppliedApi ?? new BrowserIntakeApi());
+  const sharedAuth = useOptionalAuth();
+  const sharedSessionInitialized = useRef(false);
+  const [fallbackApi] = useState<IntakeApi>(() => suppliedApi ?? new BrowserIntakeApi());
+  const api = suppliedApi ?? sharedAuth?.api ?? fallbackApi;
   const [authState, setAuthState] = useState<AsyncState>("loading");
   const [auth, setAuth] = useState<AuthData | null>(null);
   const [authError, setAuthError] = useState("");
@@ -117,6 +121,22 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
   const orderIdempotencyKey = useRef(createIdempotencyKey());
 
   useEffect(() => {
+    if (!suppliedApi && sharedAuth?.status === "authenticated" && sharedAuth.user) {
+      if (sharedSessionInitialized.current) return;
+      sharedSessionInitialized.current = true;
+      const session = { accessToken: "", expiresInSeconds: 0, user: sharedAuth.user };
+      const memberships = eligibleMemberships(session);
+      const initialMembership = memberships[0];
+      setAuth(session);
+      setShopId(initialMembership?.shopId ?? "");
+      setDraft({
+        ...EMPTY_INTAKE_DRAFT,
+        branchId: initialMembership?.branches[0]?.id ?? "",
+      });
+      setAuthState("success");
+      return;
+    }
+    if (!suppliedApi && sharedAuth) return;
     let active = true;
     void api
       .restoreSession()
@@ -140,7 +160,7 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [api, sharedAuth, suppliedApi]);
 
   const memberships = auth ? eligibleMemberships(auth) : [];
   const activeMembership = memberships.find((membership) => membership.shopId === shopId);
@@ -484,10 +504,12 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
 
   return (
     <main className="intake-shell">
-      <header className="staff-header">
-        <a className="brand" href="/" aria-label="RepairFlow home">
-          <span>R</span> RepairFlow
-        </a>
+      <section className="intake-heading">
+        <div>
+          <p className="eyebrow">Tiếp nhận thiết bị</p>
+          <h1>Tạo phiếu sửa chữa</h1>
+          <p>Ghi lại tình trạng ban đầu rõ ràng trước khi nhận thiết bị.</p>
+        </div>
         <label className="shop-selector">
           <span>Cửa hàng</span>
           <select value={shopId} onChange={(event) => resetForShop(event.target.value)}>
@@ -498,21 +520,6 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
             ))}
           </select>
         </label>
-      </header>
-
-      <section className="intake-heading">
-        <div>
-          <p className="eyebrow">Tiếp nhận thiết bị</p>
-          <h1>Tạo phiếu sửa chữa</h1>
-          <p>Ghi lại tình trạng ban đầu rõ ràng trước khi nhận thiết bị.</p>
-        </div>
-        <div className="operator-chip">
-          <span>{auth.user.displayName.slice(0, 1).toUpperCase()}</span>
-          <div>
-            <strong>{auth.user.displayName}</strong>
-            <small>{activeMembership.role === "OWNER" ? "Chủ cửa hàng" : "Lễ tân"}</small>
-          </div>
-        </div>
       </section>
 
       <nav className="stepper" aria-label="Các bước tiếp nhận">
