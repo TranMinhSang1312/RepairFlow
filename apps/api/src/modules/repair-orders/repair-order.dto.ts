@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { Priority } from "@prisma/client";
+import { Priority, RepairOrderStatus } from "@prisma/client";
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -24,6 +24,9 @@ const normalizeUuidArray = ({ value }: { value: unknown }): unknown =>
   Array.isArray(value)
     ? value.map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : entry))
     : value;
+
+const toArray = ({ value }: { value: unknown }): unknown =>
+  value === undefined ? value : Array.isArray(value) ? value : [value];
 
 export class IntakeAccessoryDto {
   @Transform(trim)
@@ -88,4 +91,32 @@ export class CreateRepairOrderDto {
   @ArrayUnique()
   @IsUUID(undefined, { each: true })
   mediaAssetIds!: string[];
+}
+
+export class ListRepairOrdersQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  cursor?: string;
+
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  query?: string;
+
+  @Transform(toArray)
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(RepairOrderStatus, { each: true })
+  status?: RepairOrderStatus[];
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  technicianUserId?: string;
 }
