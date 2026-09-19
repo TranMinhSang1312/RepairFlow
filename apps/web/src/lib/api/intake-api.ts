@@ -80,7 +80,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
 
   constructor(
     private readonly baseUrl = "/api/v1",
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
     private readonly callbacks: SessionCallbacks = {},
   ) {}
 
