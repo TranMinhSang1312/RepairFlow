@@ -6,6 +6,9 @@ import type {
   Device,
   NewCustomer,
   NewDevice,
+  RepairOrderDetail,
+  RepairOrderFilters,
+  RepairOrderPage,
   RepairOrderReceipt,
 } from "./types";
 
@@ -39,13 +42,23 @@ export interface IntakeApi {
   ): Promise<RepairOrderReceipt>;
 }
 
+export interface RepairOrderReadApi {
+  restoreSession(): Promise<AuthData>;
+  listRepairOrders(
+    shopId: string,
+    filters: RepairOrderFilters,
+    cursor?: string,
+  ): Promise<RepairOrderPage>;
+  getRepairOrder(shopId: string, repairOrderId: string): Promise<RepairOrderDetail>;
+}
+
 type RequestOptions = RequestInit & {
   shopId?: string;
   idempotencyKey?: string;
   retryAuth?: boolean;
 };
 
-export class BrowserIntakeApi implements IntakeApi {
+export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
 
@@ -168,6 +181,30 @@ export class BrowserIntakeApi implements IntakeApi {
       idempotencyKey,
       body: JSON.stringify(input),
     });
+    return response.data;
+  }
+
+  async listRepairOrders(
+    shopId: string,
+    filters: RepairOrderFilters,
+    cursor?: string,
+  ): Promise<RepairOrderPage> {
+    const params = new URLSearchParams();
+    const query = filters.query?.trim();
+    if (query) params.set("query", query);
+    for (const status of filters.statuses ?? []) params.append("status", status);
+    if (filters.branchId) params.set("branchId", filters.branchId);
+    if (filters.technicianUserId) params.set("technicianUserId", filters.technicianUserId);
+    if (cursor) params.set("cursor", cursor);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.request<RepairOrderPage>(`/repair-orders${suffix}`, { shopId });
+  }
+
+  async getRepairOrder(shopId: string, repairOrderId: string): Promise<RepairOrderDetail> {
+    const response = await this.request<DataResponse<RepairOrderDetail>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}`,
+      { shopId },
+    );
     return response.data;
   }
 
