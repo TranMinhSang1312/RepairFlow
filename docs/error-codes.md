@@ -63,6 +63,7 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 409 | `QUOTE_ALREADY_DECIDED` | Binding decision already exists. |
 | 422 | `QUOTE_ITEMS_REQUIRED` | Quote has no items. |
 | 422 | `QUOTE_APPROVAL_GROUP_INVALID` | Selected items violate required group rules. |
+| 422 | `QUOTE_DESTINATION_REQUIRED` | Selected delivery channel has no usable destination in the intake customer snapshot. |
 | 404 | `PUBLIC_LINK_INVALID` | Token is invalid or revoked; response does not reveal which. |
 | 410 | `PUBLIC_LINK_EXPIRED` | Token expired. |
 | 410 | `PUBLIC_QUOTE_UNAVAILABLE` | Quote expired or was superseded. |
@@ -79,4 +80,3 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 503 | `AI_PROVIDER_UNAVAILABLE` | Provider is unavailable; manual flow remains usable. |
 | 502 | `AI_OUTPUT_INVALID` | Provider output failed schema validation. |
 | 409 | `AI_DRAFT_ALREADY_APPLIED` | The same draft cannot be applied twice. |
-
