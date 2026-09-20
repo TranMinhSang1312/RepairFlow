@@ -429,6 +429,8 @@ model Assignment {
 
   @@index([shopId, repairOrderId, unassignedAt])
   @@index([shopId, technicianUserId, unassignedAt])
+  /// PostgreSQL partial unique index `assignments_one_active_per_order_idx`
+  /// enforces one row per (shopId, repairOrderId) where unassignedAt IS NULL.
   @@map("assignments")
 }
 

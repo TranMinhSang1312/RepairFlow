@@ -136,6 +136,21 @@ paths:
                   data: {$ref: '#/components/schemas/CurrentUser'}
         '401': {$ref: '#/components/responses/Unauthorized'}
 
+  /api/v1/technicians:
+    get:
+      tags: [Repair orders]
+      summary: List active technicians assignable in the selected shop
+      operationId: listAssignableTechnicians
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+      responses:
+        '200':
+          description: Active technicians in the selected shop
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TechnicianListResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
   /api/v1/customers:
     get:
       tags: [Customers]
@@ -344,7 +359,12 @@ paths:
               properties:
                 technicianUserId: {$ref: '#/components/schemas/Uuid'}
       responses:
-        '201': {description: Assignment created}
+        '201':
+          description: Assignment created or current same-technician assignment returned
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AssignmentResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
 
@@ -368,6 +388,8 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
 
   /api/v1/repair-orders/{repairOrderId}/diagnoses:
@@ -384,8 +406,13 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/CreateDiagnosisRequest'}
       responses:
-        '201': {description: Diagnosis revision created}
+        '201':
+          description: Diagnosis revision created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosisResponse'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
 
   /api/v1/repair-orders/{repairOrderId}/quotes:
@@ -407,6 +434,32 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/QuoteResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/quotes/{quoteVersionId}:
+    patch:
+      tags: [Quotes]
+      summary: Replace editable fields and items of a draft quote
+      operationId: replaceDraftQuote
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/QuoteVersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateQuoteRequest'}
+      responses:
+        '200':
+          description: Draft quote replaced with server-calculated totals
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/QuoteResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
@@ -414,6 +467,7 @@ paths:
     post:
       tags: [Quotes]
       summary: Freeze and send a quote version
+      description: The raw public token is derived with a keyed cryptographic PRF from stable token metadata and is never persisted. Repeating the same idempotency key and payload returns the same URL without duplicating business records.
       operationId: sendQuote
       parameters:
         - $ref: '#/components/parameters/ShopHeader'
@@ -430,6 +484,7 @@ paths:
                 channel:
                   type: string
                   enum: [EMAIL, ZALO, SMS, COPY_LINK]
+                  description: COPY_LINK creates no notification delivery. Other channels use the immutable intake customer snapshot and fail when the required destination is absent.
       responses:
         '200':
           description: Quote frozen; notification queued or link returned
@@ -445,7 +500,10 @@ paths:
                     properties:
                       quote: {$ref: '#/components/schemas/Quote'}
                       publicUrl: {type: string, format: uri}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
 
   /api/v1/repair-orders/{repairOrderId}/work-logs:
     post:
@@ -761,6 +819,20 @@ components:
                   properties:
                     id: {$ref: '#/components/schemas/Uuid'}
                     name: {type: string}
+    TechnicianSummary:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName]
+      properties:
+        userId: {$ref: '#/components/schemas/Uuid'}
+        displayName: {type: string}
+    TechnicianListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/TechnicianSummary'}
     CreateCustomerRequest:
       type: object
       additionalProperties: false
@@ -920,7 +992,7 @@ components:
       allOf:
         - {$ref: '#/components/schemas/RepairOrder'}
         - type: object
-          required: [accessories, media, timeline]
+          required: [accessories, media, activeAssignment, diagnoses, quoteVersions, timeline]
           properties:
             accessories:
               type: array
@@ -928,6 +1000,16 @@ components:
             media:
               type: array
               items: {$ref: '#/components/schemas/IntakeMedia'}
+            activeAssignment:
+              oneOf:
+                - {$ref: '#/components/schemas/Assignment'}
+                - {type: 'null'}
+            diagnoses:
+              type: array
+              items: {$ref: '#/components/schemas/Diagnosis'}
+            quoteVersions:
+              type: array
+              items: {$ref: '#/components/schemas/Quote'}
             timeline:
               type: array
               items: {$ref: '#/components/schemas/RepairOrderTimelineEvent'}
@@ -990,15 +1072,55 @@ components:
         finding: {type: string, minLength: 1, maxLength: 10000}
         recommendation: {type: string, minLength: 1, maxLength: 10000}
         supersedesId: {type: [string, 'null'], format: uuid}
+    Assignment:
+      type: object
+      additionalProperties: false
+      required: [id, repairOrderId, technicianUserId, technicianDisplayName, assignedByUserId, assignedAt, unassignedAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        technicianUserId: {$ref: '#/components/schemas/Uuid'}
+        technicianDisplayName: {type: string}
+        assignedByUserId: {$ref: '#/components/schemas/Uuid'}
+        assignedAt: {$ref: '#/components/schemas/IsoDateTime'}
+        unassignedAt: {type: [string, 'null'], format: date-time}
+    AssignmentResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: '#/components/schemas/Assignment'}
+    Diagnosis:
+      type: object
+      additionalProperties: false
+      required: [id, repairOrderId, revisionNo, finding, recommendation, supersedesId, createdByUserId, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        revisionNo: {type: integer, minimum: 1}
+        finding: {type: string}
+        recommendation: {type: string}
+        supersedesId: {type: [string, 'null'], format: uuid}
+        createdByUserId: {$ref: '#/components/schemas/Uuid'}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    DiagnosisResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: '#/components/schemas/Diagnosis'}
     CreateQuoteRequest:
       type: object
       additionalProperties: false
       required: [items]
       properties:
         diagnosisId: {type: [string, 'null'], format: uuid}
-        discount: {$ref: '#/components/schemas/MoneyVnd'}
+        discount:
+          allOf: [{$ref: '#/components/schemas/MoneyVnd'}]
+          description: Quote-level discount applied once to the accepted scope. Defaults to zero.
         customerNote: {type: [string, 'null'], maxLength: 3000}
-        expiresAt: {type: [string, 'null'], format: date-time}
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: When null, send time plus the shop defaultQuoteExpiryHours is used.
         items:
           type: array
           minItems: 1
@@ -1011,24 +1133,37 @@ components:
       properties:
         kind: {type: string, enum: [SERVICE, PART, FEE]}
         description: {type: string, minLength: 1, maxLength: 500}
-        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.01
+          description: Server multiplies the decimal quantity by integer VND unitPrice and rounds half-up to the nearest VND.
         unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
         isOptional: {type: boolean}
-        approvalGroup: {type: [string, 'null'], maxLength: 80}
+        approvalGroup:
+          type: [string, 'null']
+          maxLength: 80
+          description: Optional items sharing a non-null group must be selected all-or-none; optional items without a group are independently selectable.
     QuoteItem:
-      allOf:
-        - {$ref: '#/components/schemas/CreateQuoteItem'}
-        - type: object
-          required: [id, lineTotal]
-          properties:
-            id: {$ref: '#/components/schemas/Uuid'}
-            lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
+      type: object
+      additionalProperties: false
+      required: [id, kind, description, quantity, unitPrice, lineTotal, isOptional, approvalGroup]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        kind: {type: string, enum: [SERVICE, PART, FEE]}
+        description: {type: string}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
+        lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
+        isOptional: {type: boolean}
+        approvalGroup: {type: [string, 'null']}
     Quote:
       type: object
-      required: [id, repairOrderId, versionNo, status, currency, items, subtotal, discount, total]
+      required: [id, repairOrderId, diagnosisId, versionNo, status, currency, items, subtotal, discount, total, customerNote, expiresAt, sentAt, decidedAt, createdAt, updatedAt]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        diagnosisId: {type: [string, 'null'], format: uuid}
         versionNo: {type: integer, minimum: 1}
         status: {type: string, enum: [DRAFT, SENT, ACCEPTED, PARTIALLY_ACCEPTED, DECLINED, EXPIRED, SUPERSEDED]}
         currency: {type: string, const: VND}
@@ -1036,8 +1171,12 @@ components:
         subtotal: {$ref: '#/components/schemas/MoneyVnd'}
         discount: {$ref: '#/components/schemas/MoneyVnd'}
         total: {$ref: '#/components/schemas/MoneyVnd'}
+        customerNote: {type: [string, 'null']}
         expiresAt: {type: [string, 'null'], format: date-time}
         sentAt: {type: [string, 'null'], format: date-time}
+        decidedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+        updatedAt: {$ref: '#/components/schemas/IsoDateTime'}
     QuoteResponse:
       type: object
       required: [data]
@@ -1051,6 +1190,7 @@ components:
         approvedItemIds:
           type: array
           uniqueItems: true
+          description: Required items are implicit. Optional items with no group are independent; IDs sharing an approval group must be submitted all-or-none.
           items: {$ref: '#/components/schemas/Uuid'}
         customerNote: {type: [string, 'null'], maxLength: 2000}
     QuoteDecisionResponse:
@@ -1063,7 +1203,9 @@ components:
           properties:
             quoteVersionId: {$ref: '#/components/schemas/Uuid'}
             decision: {type: string, enum: [ACCEPTED, PARTIALLY_ACCEPTED, DECLINED]}
-            approvedTotal: {$ref: '#/components/schemas/MoneyVnd'}
+            approvedTotal:
+              allOf: [{$ref: '#/components/schemas/MoneyVnd'}]
+              description: max(0, sum of accepted line totals minus the quote-level discount).
             decidedAt: {$ref: '#/components/schemas/IsoDateTime'}
     CreateWorkLogRequest:
       type: object
@@ -1112,6 +1254,40 @@ components:
             startsAt: {$ref: '#/components/schemas/IsoDateTime'}
             endsAt: {$ref: '#/components/schemas/IsoDateTime'}
             terms: {type: string, minLength: 1, maxLength: 10000}
+    PublicQuoteItem:
+      type: object
+      additionalProperties: false
+      required: [id, kind, description, quantity, unitPrice, lineTotal, isOptional, approvalGroup]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        kind: {type: string, enum: [SERVICE, PART, FEE]}
+        description: {type: string}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
+        lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
+        isOptional: {type: boolean}
+        approvalGroup:
+          type: [string, 'null']
+          description: Optional items sharing a non-null group are selected all-or-none.
+    PublicQuote:
+      type: object
+      additionalProperties: false
+      required: [id, versionNo, status, currency, items, subtotal, discount, total, customerNote, expiresAt, sentAt, decidedAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        versionNo: {type: integer, minimum: 1}
+        status: {type: string, enum: [SENT, ACCEPTED, PARTIALLY_ACCEPTED, DECLINED]}
+        currency: {type: string, const: VND}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/PublicQuoteItem'}
+        subtotal: {$ref: '#/components/schemas/MoneyVnd'}
+        discount: {$ref: '#/components/schemas/MoneyVnd'}
+        total: {$ref: '#/components/schemas/MoneyVnd'}
+        customerNote: {type: [string, 'null']}
+        expiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+        sentAt: {$ref: '#/components/schemas/IsoDateTime'}
+        decidedAt: {type: [string, 'null'], format: date-time}
     PublicOrderResponse:
       type: object
       required: [data]
@@ -1140,7 +1316,7 @@ components:
                   createdAt: {$ref: '#/components/schemas/IsoDateTime'}
             quote:
               oneOf:
-                - {$ref: '#/components/schemas/Quote'}
+                - {$ref: '#/components/schemas/PublicQuote'}
                 - {type: 'null'}
     AiRunResponse:
       type: object
