@@ -80,7 +80,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
 
   constructor(
     private readonly baseUrl = "/api/v1",
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
     private readonly callbacks: SessionCallbacks = {},
   ) {}
 
@@ -93,7 +93,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
   }
 
   private async performRefresh(): Promise<AuthData> {
-    const response = await this.fetcher(`${this.baseUrl}/auth/refresh`, {
+    const response = await this.fetcher.call(globalThis, `${this.baseUrl}/auth/refresh`, {
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
@@ -114,7 +114,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
   }
 
   private async authenticate(path: string, input: LoginInput | RegisterOwnerInput) {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, {
+    const response = await this.fetcher.call(globalThis, `${this.baseUrl}${path}`, {
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
@@ -207,7 +207,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
     onProgress?.({ stage: "uploading" });
     let upload: Response;
     try {
-      upload = await this.fetcher(presigned.data.uploadUrl, {
+      upload = await this.fetcher.call(globalThis, presigned.data.uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": file.type },
         body: file,
@@ -280,7 +280,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
     if (shopId) requestHeaders.set("X-Shop-Id", shopId);
     if (idempotencyKey) requestHeaders.set("Idempotency-Key", idempotencyKey);
 
-    const response = await this.fetcher(`${this.baseUrl}${path}`, {
+    const response = await this.fetcher.call(globalThis, `${this.baseUrl}${path}`, {
       ...requestInit,
       headers: requestHeaders,
       credentials: "same-origin",

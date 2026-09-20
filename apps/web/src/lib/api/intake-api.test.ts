@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RepairFlowApiError } from "./errors";
 import { BrowserIntakeApi } from "./intake-api";
@@ -42,6 +42,10 @@ const orderInput: CreateRepairOrderInput = {
   mediaAssetIds: ["66666666-6666-4666-8666-666666666666"],
 };
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -50,6 +54,26 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("BrowserIntakeApi", () => {
+  it.each([
+    ["default fetch", undefined],
+    ["explicit browser fetch", "explicit"],
+  ])("calls %s with the global context", async (_label, mode) => {
+    const browserFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return Promise.resolve(jsonResponse(authBody));
+    });
+    vi.stubGlobal("fetch", browserFetch);
+
+    const api =
+      mode === "explicit"
+        ? new BrowserIntakeApi("/api/v1", globalThis.fetch)
+        : new BrowserIntakeApi();
+    await expect(
+      api.login({ email: "owner@example.com", password: "very-secure-password" }),
+    ).resolves.toEqual(authBody.data);
+    expect(browserFetch).toHaveBeenCalledOnce();
+  });
+
   it("registers and logs in without persisting credentials", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(authBody, 201));
     const api = new BrowserIntakeApi("/api/v1", fetcher);
