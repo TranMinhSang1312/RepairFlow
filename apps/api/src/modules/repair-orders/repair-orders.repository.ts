@@ -59,7 +59,15 @@ const repairOrderInclude = {
     where: { unassignedAt: null },
     orderBy: [{ assignedAt: "desc" as const }, { id: "desc" as const }],
     take: 1,
-    select: { technicianUserId: true },
+    select: {
+      id: true,
+      repairOrderId: true,
+      technicianUserId: true,
+      assignedByUserId: true,
+      assignedAt: true,
+      unassignedAt: true,
+      technician: { select: { user: { select: { displayName: true } } } },
+    },
   },
 } satisfies Prisma.RepairOrderInclude;
 

@@ -9,6 +9,7 @@ export const Capability = {
   INTAKE_MEDIA_UPLOAD: "INTAKE_MEDIA_UPLOAD",
   REPAIR_ORDER_LIST: "REPAIR_ORDER_LIST",
   REPAIR_ORDER_READ_ASSIGNED: "REPAIR_ORDER_READ_ASSIGNED",
+  ASSIGNMENT_MANAGE: "ASSIGNMENT_MANAGE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
