@@ -15,6 +15,7 @@ interface ExecuteIdempotentlyOptions<TResponse> {
   scope: string;
   key: string | undefined;
   request: unknown;
+  responseStatus?: number;
   operation: (transaction: Prisma.TransactionClient) => Promise<TResponse>;
 }
 
@@ -49,6 +50,11 @@ export class IdempotencyService {
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
+        const lockKey = `${options.tenant.shopId}:${options.scope}:${keyHash}`;
+        await transaction.$queryRaw`
+          SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text AS locked
+        `;
+
         const existing = await transaction.idempotencyRecord.findUnique({
           where: {
             shopId_scope_keyHash: {
@@ -75,7 +81,7 @@ export class IdempotencyService {
             scope: options.scope,
             keyHash,
             requestHash,
-            responseStatus: HttpStatus.CREATED,
+            responseStatus: options.responseStatus ?? HttpStatus.CREATED,
             responseBody,
             expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
           },

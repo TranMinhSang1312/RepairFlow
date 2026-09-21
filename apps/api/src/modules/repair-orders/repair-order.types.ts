@@ -11,6 +11,11 @@ import type {
 
 import { toCustomerView, type CustomerView } from "../customers/customer.types.js";
 import { toDeviceView, type DeviceView } from "../devices/device.types.js";
+import {
+  toAssignmentView,
+  type AssignmentRecord,
+  type AssignmentView,
+} from "./assignments/assignment.types.js";
 
 export interface RepairOrderView {
   id: string;
@@ -68,6 +73,7 @@ export interface OrderEventView {
 export interface RepairOrderDetailView extends RepairOrderView {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
+  activeAssignment: AssignmentView | null;
   timeline: OrderEventView[];
 }
 
@@ -93,7 +99,7 @@ interface RepairOrderRecord {
   lockVersion: number;
   customer: Customer;
   device: Device;
-  assignments?: Array<{ technicianUserId: string }>;
+  assignments?: AssignmentRecord[];
 }
 
 function jsonRecord(value: Prisma.JsonValue): Record<string, Prisma.JsonValue> {
@@ -186,6 +192,7 @@ export function toRepairOrderDetailView(
       ...asset,
       uploadedAt: asset.uploadedAt?.toISOString() ?? null,
     })),
+    activeAssignment: order.assignments?.[0] ? toAssignmentView(order.assignments[0]) : null,
     timeline: order.events.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),

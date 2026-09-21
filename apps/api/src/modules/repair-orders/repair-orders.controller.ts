@@ -1,6 +1,17 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs runtime constructors for DI and validation metadata. */
 
-import { Body, Controller, Get, Headers, Param, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 
 import { AccessTokenGuard } from "../../common/auth/access-token.guard.js";
 import { Capability } from "../../common/permissions/capability.js";
@@ -11,11 +22,16 @@ import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import { TenantGuard } from "../../common/tenant/tenant.guard.js";
 import { CreateRepairOrderDto, ListRepairOrdersQueryDto } from "./repair-order.dto.js";
 import { RepairOrdersService } from "./repair-orders.service.js";
+import { TransitionRepairOrderDto } from "./state-machine/transition-repair-order.dto.js";
+import { RepairOrderStateMachineService } from "./state-machine/repair-order-state-machine.service.js";
 
 @Controller("repair-orders")
 @UseGuards(AccessTokenGuard, TenantGuard, PermissionGuard)
 export class RepairOrdersController {
-  constructor(private readonly repairOrdersService: RepairOrdersService) {}
+  constructor(
+    private readonly repairOrdersService: RepairOrdersService,
+    private readonly stateMachine: RepairOrderStateMachineService,
+  ) {}
 
   @Get()
   @RequireCapabilities(Capability.REPAIR_ORDER_READ_ASSIGNED)
@@ -37,5 +53,17 @@ export class RepairOrdersController {
     @Body() dto: CreateRepairOrderDto,
   ) {
     return this.repairOrdersService.create(tenant, dto, idempotencyKey);
+  }
+
+  @Post(":repairOrderId/transition")
+  @HttpCode(HttpStatus.OK)
+  @RequireCapabilities(Capability.REPAIR_ORDER_TRANSITION)
+  transition(
+    @CurrentTenant() tenant: TenantContext,
+    @Param("repairOrderId") repairOrderId: string,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
+    @Body() dto: TransitionRepairOrderDto,
+  ) {
+    return this.stateMachine.transition(tenant, repairOrderId, dto, idempotencyKey);
   }
 }
