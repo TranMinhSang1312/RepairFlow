@@ -8,6 +8,8 @@ import { AssignmentsService } from "./assignments/assignments.service.js";
 import { RepairOrdersController } from "./repair-orders.controller.js";
 import { RepairOrdersRepository } from "./repair-orders.repository.js";
 import { RepairOrdersService } from "./repair-orders.service.js";
+import { RepairOrderStateMachineRepository } from "./state-machine/repair-order-state-machine.repository.js";
+import { RepairOrderStateMachineService } from "./state-machine/repair-order-state-machine.service.js";
 
 @Module({
   imports: [IdempotencyModule, MediaModule],
@@ -17,6 +19,9 @@ import { RepairOrdersService } from "./repair-orders.service.js";
     RepairOrdersService,
     AssignmentsRepository,
     AssignmentsService,
+    RepairOrderStateMachineRepository,
+    RepairOrderStateMachineService,
   ],
+  exports: [RepairOrderStateMachineService],
 })
 export class RepairOrdersModule {}
