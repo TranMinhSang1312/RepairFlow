@@ -34,6 +34,13 @@ export interface QuoteResponse {
   data: QuoteView;
 }
 
+export interface SendQuoteResponse {
+  data: {
+    quote: QuoteView;
+    publicUrl: string;
+  };
+}
+
 export interface QuoteRecord {
   id: string;
   repairOrderId: string;

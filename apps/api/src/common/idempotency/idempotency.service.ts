@@ -16,6 +16,7 @@ interface ExecuteIdempotentlyOptions<TResponse> {
   key: string | undefined;
   request: unknown;
   responseStatus?: number;
+  recordExpiresAt?: (response: TResponse) => Date;
   operation: (transaction: Prisma.TransactionClient) => Promise<TResponse>;
 }
 
@@ -44,6 +45,16 @@ export class IdempotencyService {
   async execute<TResponse extends object>(
     options: ExecuteIdempotentlyOptions<TResponse>,
   ): Promise<TResponse> {
+    return this.executeStored(options);
+  }
+
+  /**
+   * Persists only the operation result supplied here. Callers that return secrets can store a
+   * replay descriptor and reconstruct the secret response after this method returns.
+   */
+  async executeStored<TStored extends object>(
+    options: ExecuteIdempotentlyOptions<TStored>,
+  ): Promise<TStored> {
     const key = this.validatedKey(options.key);
     const keyHash = hash(key);
     const requestHash = hash(JSON.stringify(canonicalize(options.request)));
@@ -67,7 +78,7 @@ export class IdempotencyService {
 
         if (existing && existing.expiresAt > new Date()) {
           this.assertSameRequest(existing.requestHash, requestHash);
-          return existing.responseBody as TResponse;
+          return existing.responseBody as TStored;
         }
         if (existing) {
           await transaction.idempotencyRecord.delete({ where: { id: existing.id } });
@@ -83,7 +94,8 @@ export class IdempotencyService {
             requestHash,
             responseStatus: options.responseStatus ?? HttpStatus.CREATED,
             responseBody,
-            expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
+            expiresAt:
+              options.recordExpiresAt?.(response) ?? new Date(Date.now() + IDEMPOTENCY_TTL_MS),
           },
         });
         return response;
@@ -104,7 +116,7 @@ export class IdempotencyService {
         });
         if (existing) {
           this.assertSameRequest(existing.requestHash, requestHash);
-          return existing.responseBody as TResponse;
+          return existing.responseBody as TStored;
         }
       }
       throw error;
