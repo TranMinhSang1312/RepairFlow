@@ -24,6 +24,18 @@ const trim = ({ value }: { value: unknown }): unknown =>
 const normalizeUuid = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim().toLowerCase() : value;
 
+export enum QuoteSendChannel {
+  EMAIL = "EMAIL",
+  ZALO = "ZALO",
+  SMS = "SMS",
+  COPY_LINK = "COPY_LINK",
+}
+
+export class SendQuoteDto {
+  @IsEnum(QuoteSendChannel)
+  channel!: QuoteSendChannel;
+}
+
 export class CreateQuoteItemDto {
   @IsEnum(QuoteItemKind)
   kind!: QuoteItemKind;

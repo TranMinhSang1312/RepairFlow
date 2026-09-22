@@ -12,22 +12,19 @@ import { AssignmentsService } from "./assignments/assignments.service.js";
 import { RepairOrdersController } from "./repair-orders.controller.js";
 import { RepairOrdersRepository } from "./repair-orders.repository.js";
 import { RepairOrdersService } from "./repair-orders.service.js";
-import { RepairOrderStateMachineRepository } from "./state-machine/repair-order-state-machine.repository.js";
-import { RepairOrderStateMachineService } from "./state-machine/repair-order-state-machine.service.js";
+import { RepairOrderStateMachineModule } from "./state-machine/repair-order-state-machine.module.js";
 
 @Module({
-  imports: [IdempotencyModule, MediaModule, QuotesModule],
+  imports: [IdempotencyModule, MediaModule, RepairOrderStateMachineModule, QuotesModule],
   controllers: [RepairOrdersController, AssignmentsController, DiagnosesController],
   providers: [
     RepairOrdersRepository,
     RepairOrdersService,
     AssignmentsRepository,
     AssignmentsService,
-    RepairOrderStateMachineRepository,
-    RepairOrderStateMachineService,
     DiagnosesRepository,
     DiagnosesService,
   ],
-  exports: [RepairOrderStateMachineService],
+  exports: [RepairOrderStateMachineModule],
 })
 export class RepairOrdersModule {}

@@ -11,6 +11,8 @@ const apiEnvironmentSchema = z
     LOG_LEVEL: logLevel.default("info"),
     DATABASE_URL: z.string().min(1),
     ACCESS_TOKEN_SECRET: z.string().min(32),
+    PUBLIC_TOKEN_SECRET: z.string().min(32).optional(),
+    PUBLIC_WEB_URL: z.string().url().default("http://localhost:3000"),
     REFRESH_COOKIE_NAME: z.string().min(1).default("repairflow_refresh"),
     OBJECT_STORAGE_ENDPOINT: z.string().url().default("http://localhost:9000"),
     OBJECT_STORAGE_REGION: z.string().min(1).default("us-east-1"),
@@ -27,6 +29,17 @@ const apiEnvironmentSchema = z
         code: "custom",
         path: ["ACCESS_TOKEN_SECRET"],
         message: "Production requires a non-placeholder access-token secret.",
+      });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      (!environment.PUBLIC_TOKEN_SECRET ||
+        environment.PUBLIC_TOKEN_SECRET.startsWith("replace-with-"))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["PUBLIC_TOKEN_SECRET"],
+        message: "Production requires a dedicated non-placeholder public-token derivation secret.",
       });
     }
     if (

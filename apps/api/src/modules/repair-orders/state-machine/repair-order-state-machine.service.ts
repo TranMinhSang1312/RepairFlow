@@ -143,6 +143,9 @@ export class RepairOrderStateMachineService {
         role === MembershipRole.TECHNICIAN) ||
       (from === RepairOrderStatus.AWAITING_APPROVAL &&
         to === RepairOrderStatus.DIAGNOSING &&
+        role === MembershipRole.RECEPTIONIST) ||
+      ((from === RepairOrderStatus.DIAGNOSING || from === RepairOrderStatus.REPAIRING) &&
+        to === RepairOrderStatus.AWAITING_APPROVAL &&
         role === MembershipRole.RECEPTIONIST);
     if (!permitted) {
       throw new ApiException(
@@ -200,6 +203,15 @@ export class RepairOrderStateMachineService {
       if (hasHistory) {
         throw this.guardFailed("An order with quote, payment, or work history cannot be voided.");
       }
+    }
+
+    if (
+      (order.status === RepairOrderStatus.DIAGNOSING ||
+        order.status === RepairOrderStatus.REPAIRING) &&
+      targetStatus === RepairOrderStatus.AWAITING_APPROVAL &&
+      (!order.quoteVersions[0] || order.quoteVersions[0].items.length === 0)
+    ) {
+      throw this.guardFailed("A sent quote with at least one item is required for approval.");
     }
   }
 

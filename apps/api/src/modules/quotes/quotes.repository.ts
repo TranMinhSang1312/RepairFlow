@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs PrismaService at runtime for DI. */
 
 import { Injectable } from "@nestjs/common";
-import { ActorType, Prisma } from "@prisma/client";
+import { ActorType, NotificationStatus, Prisma, QuoteStatus, TokenScope } from "@prisma/client";
 
 import { PrismaService } from "../../infra/database/prisma.service.js";
 import type { QuoteCalculation } from "./quote-calculator.js";
+import type { NotificationPlan } from "../notifications/fake-notification.adapter.js";
+import type { QuoteTokenMetadata } from "../public-access/public-token.service.js";
 
 const quoteInclude = {
   items: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
@@ -63,6 +65,164 @@ export class QuotesRepository {
         status: true,
         repairOrderId: true,
         repairOrder: { select: { status: true } },
+      },
+    });
+  }
+
+  findQuoteForSend(transaction: Prisma.TransactionClient, shopId: string, quoteVersionId: string) {
+    return transaction.quoteVersion.findFirst({
+      where: { shopId, id: quoteVersionId },
+      include: {
+        ...quoteInclude,
+        repairOrder: {
+          select: {
+            id: true,
+            status: true,
+            lockVersion: true,
+            customerSnapshot: true,
+            shop: { select: { defaultQuoteExpiryHours: true } },
+          },
+        },
+      },
+    });
+  }
+
+  findActiveSentQuotes(
+    transaction: Prisma.TransactionClient,
+    shopId: string,
+    repairOrderId: string,
+    exceptQuoteVersionId: string,
+  ) {
+    return transaction.quoteVersion.findMany({
+      where: {
+        shopId,
+        repairOrderId,
+        id: { not: exceptQuoteVersionId },
+        status: QuoteStatus.SENT,
+      },
+      orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+  }
+
+  async supersedeQuotes(
+    transaction: Prisma.TransactionClient,
+    shopId: string,
+    quoteVersionIds: string[],
+    revokedAt: Date,
+  ): Promise<void> {
+    if (quoteVersionIds.length === 0) return;
+    await transaction.quoteVersion.updateMany({
+      where: { shopId, id: { in: quoteVersionIds }, status: QuoteStatus.SENT },
+      data: { status: QuoteStatus.SUPERSEDED },
+    });
+    await transaction.publicAccessToken.updateMany({
+      where: {
+        shopId,
+        quoteVersionId: { in: quoteVersionIds },
+        scope: TokenScope.DECIDE_QUOTE,
+        revokedAt: null,
+      },
+      data: { revokedAt },
+    });
+  }
+
+  markSent(
+    transaction: Prisma.TransactionClient,
+    input: {
+      shopId: string;
+      quoteVersionId: string;
+      sentAt: Date;
+      expiresAt: Date;
+    },
+  ) {
+    return transaction.quoteVersion.update({
+      where: { shopId_id: { shopId: input.shopId, id: input.quoteVersionId } },
+      data: {
+        status: QuoteStatus.SENT,
+        sentAt: input.sentAt,
+        expiresAt: input.expiresAt,
+      },
+      include: quoteInclude,
+    });
+  }
+
+  createPublicToken(
+    transaction: Prisma.TransactionClient,
+    metadata: QuoteTokenMetadata,
+    tokenHash: string,
+  ) {
+    return transaction.publicAccessToken.create({
+      data: {
+        id: metadata.tokenId,
+        shopId: metadata.shopId,
+        repairOrderId: metadata.repairOrderId,
+        quoteVersionId: metadata.quoteVersionId,
+        scope: TokenScope.DECIDE_QUOTE,
+        tokenHash,
+        expiresAt: new Date(metadata.expiresAt),
+      },
+    });
+  }
+
+  async appendSendArtifacts(
+    transaction: Prisma.TransactionClient,
+    input: {
+      shopId: string;
+      repairOrderId: string;
+      quoteVersionId: string;
+      versionNo: number;
+      tokenId: string;
+      tokenExpiresAt: string;
+      channel: string;
+      notification: NotificationPlan | null;
+      actorUserId: string;
+      requestId: string;
+    },
+  ): Promise<void> {
+    await transaction.orderEvent.create({
+      data: {
+        shopId: input.shopId,
+        repairOrderId: input.repairOrderId,
+        eventType: "QUOTE_SENT",
+        actorType: ActorType.USER,
+        actorUserId: input.actorUserId,
+        publicPayload: { quoteVersion: input.versionNo },
+        privatePayload: {
+          quoteVersionId: input.quoteVersionId,
+          tokenRecordId: input.tokenId,
+          channel: input.channel,
+          expiresAt: input.tokenExpiresAt,
+        },
+        requestId: input.requestId,
+      },
+    });
+
+    await transaction.outboxEvent.create({
+      data: {
+        shopId: input.shopId,
+        eventType: "QUOTE_SENT",
+        aggregateType: "QUOTE_VERSION",
+        aggregateId: input.quoteVersionId,
+        payload: {
+          repairOrderId: input.repairOrderId,
+          quoteVersionId: input.quoteVersionId,
+          tokenRecordId: input.tokenId,
+          tokenScope: TokenScope.DECIDE_QUOTE,
+          channel: input.channel,
+          expiresAt: input.tokenExpiresAt,
+        },
+        ...(input.notification
+          ? {
+              notifications: {
+                create: {
+                  channel: input.notification.channel,
+                  destinationHash: input.notification.destinationHash,
+                  status: NotificationStatus.PENDING,
+                },
+              },
+            }
+          : {}),
       },
     });
   }

@@ -13,6 +13,7 @@ describe("environment parsing", () => {
     expect(api.API_PORT).toBe(3001);
     expect(api.LOG_LEVEL).toBe("info");
     expect(api.OBJECT_STORAGE_BUCKET).toBe("repairflow-private");
+    expect(api.PUBLIC_WEB_URL).toBe("http://localhost:3000");
     expect(web.NEXT_PUBLIC_API_URL).toBe("http://localhost:3001/api/v1");
   });
 
@@ -49,6 +50,27 @@ describe("environment parsing", () => {
         NODE_ENV: "production",
         DATABASE_URL: "postgresql://localhost/repairflow",
         ACCESS_TOKEN_SECRET: "production-secret-that-is-at-least-32-characters",
+        PUBLIC_TOKEN_SECRET: "separate-production-public-token-secret-value",
+      }),
+    ).toThrow();
+  });
+
+  it("requires a dedicated public-token secret in production", () => {
+    expect(() =>
+      parseApiEnvironment({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "production-secret-that-is-at-least-32-characters",
+        OBJECT_STORAGE_SECRET_KEY: "production-object-storage-secret",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseApiEnvironment({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "production-secret-that-is-at-least-32-characters",
+        PUBLIC_TOKEN_SECRET: "replace-with-a-different-32-byte-random-secret",
+        OBJECT_STORAGE_SECRET_KEY: "production-object-storage-secret",
       }),
     ).toThrow();
   });
