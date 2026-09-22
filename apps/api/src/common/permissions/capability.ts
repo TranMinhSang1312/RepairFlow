@@ -12,6 +12,7 @@ export const Capability = {
   ASSIGNMENT_MANAGE: "ASSIGNMENT_MANAGE",
   REPAIR_ORDER_TRANSITION: "REPAIR_ORDER_TRANSITION",
   DIAGNOSIS_CREATE: "DIAGNOSIS_CREATE",
+  QUOTE_DRAFT_WRITE: "QUOTE_DRAFT_WRITE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
