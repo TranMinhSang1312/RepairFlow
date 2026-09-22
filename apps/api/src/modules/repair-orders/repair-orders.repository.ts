@@ -103,6 +103,12 @@ const repairOrderDetailInclude = {
   diagnoses: {
     orderBy: [{ revisionNo: "asc" as const }, { id: "asc" as const }],
   },
+  quoteVersions: {
+    orderBy: [{ versionNo: "asc" as const }, { id: "asc" as const }],
+    include: {
+      items: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
+    },
+  },
 } satisfies Prisma.RepairOrderInclude;
 
 @Injectable()

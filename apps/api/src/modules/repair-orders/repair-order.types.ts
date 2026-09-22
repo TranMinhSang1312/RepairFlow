@@ -17,6 +17,7 @@ import {
   type AssignmentView,
 } from "./assignments/assignment.types.js";
 import { toDiagnosisView, type DiagnosisView } from "../diagnoses/diagnosis.types.js";
+import { toQuoteView, type QuoteRecord, type QuoteView } from "../quotes/quote.types.js";
 
 export interface RepairOrderView {
   id: string;
@@ -76,6 +77,7 @@ export interface RepairOrderDetailView extends RepairOrderView {
   media: IntakeMediaView[];
   activeAssignment: AssignmentView | null;
   diagnoses: DiagnosisView[];
+  quoteVersions: QuoteView[];
   timeline: OrderEventView[];
 }
 
@@ -186,6 +188,7 @@ export function toRepairOrderDetailView(
       createdAt: Date;
     }>;
     diagnoses: Parameters<typeof toDiagnosisView>[0][];
+    quoteVersions: QuoteRecord[];
   },
 ): RepairOrderDetailView {
   return {
@@ -197,6 +200,7 @@ export function toRepairOrderDetailView(
     })),
     activeAssignment: order.assignments?.[0] ? toAssignmentView(order.assignments[0]) : null,
     diagnoses: order.diagnoses.map(toDiagnosisView),
+    quoteVersions: order.quoteVersions.map(toQuoteView),
     timeline: order.events.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),
