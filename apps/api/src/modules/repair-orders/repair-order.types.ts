@@ -16,6 +16,7 @@ import {
   type AssignmentRecord,
   type AssignmentView,
 } from "./assignments/assignment.types.js";
+import { toDiagnosisView, type DiagnosisView } from "../diagnoses/diagnosis.types.js";
 
 export interface RepairOrderView {
   id: string;
@@ -74,6 +75,7 @@ export interface RepairOrderDetailView extends RepairOrderView {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
   activeAssignment: AssignmentView | null;
+  diagnoses: DiagnosisView[];
   timeline: OrderEventView[];
 }
 
@@ -183,6 +185,7 @@ export function toRepairOrderDetailView(
       publicPayload: Prisma.JsonValue | null;
       createdAt: Date;
     }>;
+    diagnoses: Parameters<typeof toDiagnosisView>[0][];
   },
 ): RepairOrderDetailView {
   return {
@@ -193,6 +196,7 @@ export function toRepairOrderDetailView(
       uploadedAt: asset.uploadedAt?.toISOString() ?? null,
     })),
     activeAssignment: order.assignments?.[0] ? toAssignmentView(order.assignments[0]) : null,
+    diagnoses: order.diagnoses.map(toDiagnosisView),
     timeline: order.events.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),

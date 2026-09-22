@@ -100,6 +100,9 @@ const repairOrderDetailInclude = {
       createdAt: true,
     },
   },
+  diagnoses: {
+    orderBy: [{ revisionNo: "asc" as const }, { id: "asc" as const }],
+  },
 } satisfies Prisma.RepairOrderInclude;
 
 @Injectable()

@@ -11,6 +11,7 @@ export const Capability = {
   REPAIR_ORDER_READ_ASSIGNED: "REPAIR_ORDER_READ_ASSIGNED",
   ASSIGNMENT_MANAGE: "ASSIGNMENT_MANAGE",
   REPAIR_ORDER_TRANSITION: "REPAIR_ORDER_TRANSITION",
+  DIAGNOSIS_CREATE: "DIAGNOSIS_CREATE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
@@ -23,5 +24,6 @@ export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capa
   [MembershipRole.TECHNICIAN]: new Set([
     Capability.REPAIR_ORDER_READ_ASSIGNED,
     Capability.REPAIR_ORDER_TRANSITION,
+    Capability.DIAGNOSIS_CREATE,
   ]),
 };
