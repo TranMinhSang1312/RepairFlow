@@ -1416,6 +1416,116 @@ body > main.workspace-shell {
   white-space: pre-wrap;
 }
 
+.assignment-card {
+  display: grid;
+  gap: 20px;
+}
+
+.assignment-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.4fr);
+  align-items: end;
+  gap: 20px;
+}
+
+.assignment-summary > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.assignment-summary span,
+.assignment-summary small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.assignment-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.workspace-primary-action {
+  justify-self: start;
+}
+
+.diagnosis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.diagnosis-history ol {
+  display: grid;
+  gap: 14px;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diagnosis-history li {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #f8faf8;
+  padding: 18px;
+}
+
+.diagnosis-history h3 {
+  margin: 17px 0 5px;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.diagnosis-history p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.diagnosis-history small,
+.diagnosis-title time {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.diagnosis-title {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.text-button {
+  margin-top: 16px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+.diagnosis-form {
+  display: grid;
+  gap: 18px;
+}
+
+.diagnosis-form textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.diagnosis-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 @media (max-width: 780px) {
   .board-title-row,
   .workspace-heading {
@@ -1433,6 +1543,10 @@ body > main.workspace-shell {
     grid-template-columns: 1fr 1fr;
   }
   .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .diagnosis-layout,
+  .assignment-summary {
     grid-template-columns: 1fr;
   }
   .full-card {
@@ -1475,6 +1589,20 @@ body > main.workspace-shell {
   .workspace-tabs button {
     flex: 1;
     padding-inline: 8px;
+  }
+  .workspace-tabs {
+    overflow-x: auto;
+  }
+  .workspace-tabs button {
+    min-width: max-content;
+  }
+  .assignment-controls {
+    grid-template-columns: 1fr;
+  }
+  .assignment-controls .button,
+  .workspace-primary-action,
+  .diagnosis-form-actions .button {
+    width: 100%;
   }
   .workspace-facts,
   .compact-facts {

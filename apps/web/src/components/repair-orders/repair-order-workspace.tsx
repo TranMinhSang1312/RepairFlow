@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { safeErrorMessage } from "@/lib/api/errors";
-import { BrowserIntakeApi, type RepairOrderReadApi } from "@/lib/api/intake-api";
+import { BrowserIntakeApi, type RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type {
+  ActiveTechnician,
   AuthData,
   CurrentUser,
   Membership,
@@ -14,8 +15,10 @@ import type {
   RepairOrderStatus,
 } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-provider";
+import { DiagnosisPanel } from "./diagnosis-panel";
+import { RepairOrderActions } from "./repair-order-actions";
 
-type WorkspaceTab = "overview" | "timeline";
+type WorkspaceTab = "overview" | "diagnosis" | "timeline";
 type LoadState = "loading" | "success" | "error";
 
 const STATUS_LABELS: Readonly<Record<RepairOrderStatus, string>> = {
@@ -33,10 +36,11 @@ const STATUS_LABELS: Readonly<Record<RepairOrderStatus, string>> = {
 
 interface RepairOrderWorkspaceScreenProps {
   repairOrderId: string;
-  api?: RepairOrderReadApi;
+  api?: RepairOrderWorkspaceApi;
   search?: string;
   replaceUrl?: (url: string) => void;
   sessionUser?: CurrentUser | undefined;
+  pollIntervalMs?: number;
 }
 
 function activeMemberships(auth: AuthData): Membership[] {
@@ -72,17 +76,22 @@ export function RepairOrderWorkspaceScreen({
   search = "",
   replaceUrl = () => undefined,
   sessionUser,
+  pollIntervalMs = 30_000,
 }: RepairOrderWorkspaceScreenProps) {
-  const [api] = useState<RepairOrderReadApi>(() => suppliedApi ?? new BrowserIntakeApi());
+  const [api] = useState<RepairOrderWorkspaceApi>(() => suppliedApi ?? new BrowserIntakeApi());
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const [auth, setAuth] = useState<AuthData | null>(null);
   const [shopId, setShopId] = useState("");
   const [order, setOrder] = useState<RepairOrderDetail | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState("");
+  const [staleWarning, setStaleWarning] = useState(false);
+  const [technicians, setTechnicians] = useState<ActiveTechnician[]>([]);
   const [tab, setTab] = useState<WorkspaceTab>("overview");
   const initialShopId = useState(() => params.get("shopId"))[0];
   const sharedSessionInitialized = useRef(false);
+  const latestRequest = useRef(0);
+  const orderRef = useRef<RepairOrderDetail | null>(null);
 
   useEffect(() => {
     if (sessionUser) {
@@ -135,31 +144,56 @@ export function RepairOrderWorkspaceScreen({
     }
   }, [auth, params, shopId]);
 
-  useEffect(() => {
-    if (!shopId) return;
-    let active = true;
-    setOrder(null);
-    setLoadState("loading");
-    setError("");
-    void api
-      .getRepairOrder(shopId, repairOrderId)
-      .then((result) => {
-        if (!active) return;
-        setOrder(result);
-        setLoadState("success");
-      })
-      .catch((reason: unknown) => {
-        if (!active) return;
-        setError(safeErrorMessage(reason));
-        setLoadState("error");
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, repairOrderId, shopId]);
-
   const memberships = auth ? activeMemberships(auth) : [];
   const membership = memberships.find((item) => item.shopId === shopId);
+  const canManageAssignments = membership?.role === "OWNER" || membership?.role === "RECEPTIONIST";
+
+  const loadWorkspace = useCallback(
+    async (background: boolean) => {
+      if (!shopId || !membership) return;
+      const requestId = ++latestRequest.current;
+      if (!background) setLoadState("loading");
+      try {
+        const [nextOrder, nextTechnicians] = await Promise.all([
+          api.getRepairOrder(shopId, repairOrderId),
+          canManageAssignments ? api.listTechnicians(shopId) : Promise.resolve([]),
+        ]);
+        if (requestId !== latestRequest.current) return;
+        orderRef.current = nextOrder;
+        setOrder(nextOrder);
+        setTechnicians(nextTechnicians);
+        setLoadState("success");
+        setError("");
+        setStaleWarning(false);
+      } catch (reason) {
+        if (requestId !== latestRequest.current) return;
+        if (background && orderRef.current) {
+          setStaleWarning(true);
+        } else {
+          setError(safeErrorMessage(reason));
+          setLoadState("error");
+        }
+      }
+    },
+    [api, canManageAssignments, membership, repairOrderId, shopId],
+  );
+
+  useEffect(() => {
+    if (!shopId || !membership) return;
+    orderRef.current = null;
+    setOrder(null);
+    setError("");
+    setStaleWarning(false);
+    void loadWorkspace(false);
+  }, [loadWorkspace, membership, shopId]);
+
+  useEffect(() => {
+    if (!shopId || !membership) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadWorkspace(true);
+    }, pollIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [loadWorkspace, membership, pollIntervalMs, shopId]);
 
   function changeShop(nextShopId: string) {
     setShopId(nextShopId);
@@ -237,6 +271,12 @@ export function RepairOrderWorkspaceScreen({
         </div>
       </section>
 
+      {staleWarning && (
+        <div className="notice notice-info stale-warning" role="status">
+          Không thể làm mới workspace. Dữ liệu đang hiển thị là lần tải thành công gần nhất.
+        </div>
+      )}
+
       <div className="workspace-tabs" role="tablist" aria-label="Nội dung phiếu">
         <button
           aria-controls="overview-panel"
@@ -246,6 +286,15 @@ export function RepairOrderWorkspaceScreen({
           type="button"
         >
           Tổng quan
+        </button>
+        <button
+          aria-controls="diagnosis-panel"
+          aria-selected={tab === "diagnosis"}
+          onClick={() => setTab("diagnosis")}
+          role="tab"
+          type="button"
+        >
+          Chẩn đoán <span>{order.diagnoses.length}</span>
         </button>
         <button
           aria-controls="timeline-panel"
@@ -260,6 +309,14 @@ export function RepairOrderWorkspaceScreen({
 
       {tab === "overview" && (
         <section className="workspace-grid" id="overview-panel" role="tabpanel">
+          <RepairOrderActions
+            api={api}
+            membership={membership}
+            onReload={() => loadWorkspace(true)}
+            order={order}
+            shopId={shopId}
+            technicians={technicians}
+          />
           <article className="workspace-card overview-main">
             <header>
               <p className="eyebrow">Thông tin tiếp nhận</p>
@@ -383,6 +440,17 @@ export function RepairOrderWorkspaceScreen({
             )}
           </article>
         </section>
+      )}
+
+      {tab === "diagnosis" && (
+        <DiagnosisPanel
+          api={api}
+          membership={membership}
+          onReload={() => loadWorkspace(true)}
+          order={order}
+          shopId={shopId}
+          userId={auth.user.id}
+        />
       )}
 
       {tab === "timeline" && (

@@ -283,4 +283,68 @@ describe("BrowserIntakeApi", () => {
       authBody.data.user.memberships[0]!.shopId,
     );
   });
+
+  it("maps assignment, transition and diagnosis workspace requests", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const orderId = "77777777-7777-4777-8777-777777777777";
+    const technicianUserId = "88888888-8888-4888-8888-888888888888";
+    const assignment = {
+      id: "99999999-9999-4999-8999-999999999999",
+      repairOrderId: orderId,
+      technicianUserId,
+      technicianDisplayName: "Technician",
+      assignedByUserId: authBody.data.user.id,
+      assignedAt: "2026-09-22T00:00:00.000Z",
+      unassignedAt: null,
+    };
+    const diagnosis = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      repairOrderId: orderId,
+      revisionNo: 1,
+      finding: "Power fault",
+      recommendation: "Replace IC",
+      supersedesId: null,
+      createdByUserId: authBody.data.user.id,
+      createdAt: "2026-09-22T00:10:00.000Z",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(
+        jsonResponse({ data: [{ userId: technicianUserId, displayName: "Technician" }] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: assignment }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: orderId, status: "DIAGNOSING" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: diagnosis }, 201));
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.restoreSession();
+    await api.listTechnicians(shopId);
+    await api.assignTechnician(shopId, orderId, technicianUserId);
+    await api.transitionRepairOrder(
+      shopId,
+      orderId,
+      { targetStatus: "DIAGNOSING", expectedLockVersion: 0 },
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    );
+    await api.createDiagnosis(shopId, orderId, {
+      finding: diagnosis.finding,
+      recommendation: diagnosis.recommendation,
+      supersedesId: null,
+    });
+
+    expect(fetcher.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      "/api/v1/technicians",
+      `/api/v1/repair-orders/${orderId}/assignments`,
+      `/api/v1/repair-orders/${orderId}/transition`,
+      `/api/v1/repair-orders/${orderId}/diagnoses`,
+    ]);
+    const transitionHeaders = new Headers(fetcher.mock.calls[3]![1]?.headers);
+    expect(transitionHeaders.get("X-Shop-Id")).toBe(shopId);
+    expect(transitionHeaders.get("Idempotency-Key")).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    expect(JSON.parse(String(fetcher.mock.calls[4]![1]?.body))).toEqual({
+      finding: diagnosis.finding,
+      recommendation: diagnosis.recommendation,
+      supersedesId: null,
+    });
+  });
 });

@@ -13,6 +13,12 @@ import type {
   LoginInput,
   RegisterOwnerInput,
   CurrentUser,
+  ActiveTechnician,
+  Assignment,
+  CreateDiagnosisInput,
+  Diagnosis,
+  RepairOrderStatus,
+  RepairOrderSummary,
 } from "./types";
 
 interface DataResponse<T> {
@@ -55,6 +61,26 @@ export interface RepairOrderReadApi {
   getRepairOrder(shopId: string, repairOrderId: string): Promise<RepairOrderDetail>;
 }
 
+export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
+  listTechnicians(shopId: string): Promise<ActiveTechnician[]>;
+  assignTechnician(
+    shopId: string,
+    repairOrderId: string,
+    technicianUserId: string,
+  ): Promise<Assignment>;
+  transitionRepairOrder(
+    shopId: string,
+    repairOrderId: string,
+    input: { targetStatus: RepairOrderStatus; expectedLockVersion: number },
+    idempotencyKey: string,
+  ): Promise<RepairOrderSummary>;
+  createDiagnosis(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateDiagnosisInput,
+  ): Promise<Diagnosis>;
+}
+
 export interface AuthApi {
   restoreSession(): Promise<AuthData>;
   login(input: LoginInput): Promise<AuthData>;
@@ -74,7 +100,7 @@ type RequestOptions = RequestInit & {
   retryAuth?: boolean;
 };
 
-export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
+export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
 
@@ -264,6 +290,50 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderReadApi {
     const response = await this.request<DataResponse<RepairOrderDetail>>(
       `/repair-orders/${encodeURIComponent(repairOrderId)}`,
       { shopId },
+    );
+    return response.data;
+  }
+
+  async listTechnicians(shopId: string): Promise<ActiveTechnician[]> {
+    const response = await this.request<DataResponse<ActiveTechnician[]>>("/technicians", {
+      shopId,
+    });
+    return response.data;
+  }
+
+  async assignTechnician(
+    shopId: string,
+    repairOrderId: string,
+    technicianUserId: string,
+  ): Promise<Assignment> {
+    const response = await this.request<DataResponse<Assignment>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/assignments`,
+      { method: "POST", shopId, body: JSON.stringify({ technicianUserId }) },
+    );
+    return response.data;
+  }
+
+  async transitionRepairOrder(
+    shopId: string,
+    repairOrderId: string,
+    input: { targetStatus: RepairOrderStatus; expectedLockVersion: number },
+    idempotencyKey: string,
+  ): Promise<RepairOrderSummary> {
+    const response = await this.request<DataResponse<RepairOrderSummary>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/transition`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async createDiagnosis(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateDiagnosisInput,
+  ): Promise<Diagnosis> {
+    const response = await this.request<DataResponse<Diagnosis>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/diagnoses`,
+      { method: "POST", shopId, body: JSON.stringify(input) },
     );
     return response.data;
   }

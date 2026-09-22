@@ -172,9 +172,43 @@ export interface RepairOrderTimelineEvent {
   createdAt: string;
 }
 
+export interface Assignment {
+  id: string;
+  repairOrderId: string;
+  technicianUserId: string;
+  technicianDisplayName: string;
+  assignedByUserId: string;
+  assignedAt: string;
+  unassignedAt: string | null;
+}
+
+export interface ActiveTechnician {
+  userId: string;
+  displayName: string;
+}
+
+export interface Diagnosis {
+  id: string;
+  repairOrderId: string;
+  revisionNo: number;
+  finding: string;
+  recommendation: string;
+  supersedesId: string | null;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface CreateDiagnosisInput {
+  finding: string;
+  recommendation: string;
+  supersedesId?: string | null;
+}
+
 export interface RepairOrderDetail extends RepairOrderSummary {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
+  activeAssignment: Assignment | null;
+  diagnoses: Diagnosis[];
   timeline: RepairOrderTimelineEvent[];
 }
 
