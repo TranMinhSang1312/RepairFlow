@@ -19,6 +19,11 @@ interface PersistDraftInput {
   expiresAt: Date | null;
 }
 
+const bindingApprovalInclude = {
+  items: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
+  approval: { select: { approvedItemSnapshot: true } },
+} satisfies Prisma.QuoteVersionInclude;
+
 @Injectable()
 export class QuotesRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -83,6 +88,82 @@ export class QuotesRepository {
             shop: { select: { defaultQuoteExpiryHours: true } },
           },
         },
+      },
+    });
+  }
+
+  findBindingApproval(
+    transaction: Prisma.TransactionClient,
+    shopId: string,
+    repairOrderId: string,
+  ) {
+    return transaction.quoteVersion.findFirst({
+      where: {
+        shopId,
+        repairOrderId,
+        status: { in: [QuoteStatus.ACCEPTED, QuoteStatus.PARTIALLY_ACCEPTED] },
+        approval: { isNot: null },
+      },
+      orderBy: [{ versionNo: "desc" }, { id: "desc" }],
+      include: bindingApprovalInclude,
+    });
+  }
+
+  async countExecutionReferences(
+    transaction: Prisma.TransactionClient,
+    shopId: string,
+    quoteItemIds: string[],
+  ): Promise<number> {
+    if (quoteItemIds.length === 0) return 0;
+    const [work, parts] = await Promise.all([
+      transaction.workLog.count({ where: { shopId, quoteItemId: { in: quoteItemIds } } }),
+      transaction.partUsed.count({ where: { shopId, quoteItemId: { in: quoteItemIds } } }),
+    ]);
+    return work + parts;
+  }
+
+  appendLineageAudit(input: {
+    shopId: string;
+    actorUserId: string | null;
+    entityId: string;
+    requestId: string;
+    accepted: boolean;
+    reason: string;
+  }) {
+    return this.prisma.auditLog.create({
+      data: {
+        shopId: input.shopId,
+        actorUserId: input.actorUserId,
+        action: input.accepted ? "QUOTE_SCOPE_LINEAGE_ACCEPTED" : "QUOTE_SCOPE_LINEAGE_REJECTED",
+        entityType: "REPAIR_ORDER",
+        entityId: input.entityId,
+        beforeData: Prisma.JsonNull,
+        afterData: { accepted: input.accepted, reason: input.reason },
+        requestId: input.requestId,
+      },
+    });
+  }
+
+  appendLineageAuditInTransaction(
+    transaction: Prisma.TransactionClient,
+    input: {
+      shopId: string;
+      actorUserId: string | null;
+      entityId: string;
+      requestId: string;
+      reason: string;
+    },
+  ) {
+    return transaction.auditLog.create({
+      data: {
+        shopId: input.shopId,
+        actorUserId: input.actorUserId,
+        action: "QUOTE_SCOPE_LINEAGE_ACCEPTED",
+        entityType: "REPAIR_ORDER",
+        entityId: input.entityId,
+        beforeData: Prisma.JsonNull,
+        afterData: { accepted: true, reason: input.reason },
+        requestId: input.requestId,
       },
     });
   }
@@ -277,7 +358,11 @@ export class QuotesRepository {
           create: input.calculation.items.map((item, sortOrder) => ({
             kind: item.kind,
             description: item.description,
+            displayNote: item.displayNote,
+            carriedFromQuoteItemId: item.carriedFromQuoteItemId,
+            ...(item.scopeKey ? { scopeKey: item.scopeKey } : {}),
             quantity: new Prisma.Decimal(item.quantity.toString()),
+            quantityUnit: item.quantityUnit,
             unitPrice: item.unitPrice,
             lineTotal: item.lineTotal,
             isOptional: item.isOptional,
@@ -328,7 +413,11 @@ export class QuotesRepository {
           create: input.calculation.items.map((item, sortOrder) => ({
             kind: item.kind,
             description: item.description,
+            displayNote: item.displayNote,
+            carriedFromQuoteItemId: item.carriedFromQuoteItemId,
+            ...(item.scopeKey ? { scopeKey: item.scopeKey } : {}),
             quantity: new Prisma.Decimal(item.quantity.toString()),
+            quantityUnit: item.quantityUnit,
             unitPrice: item.unitPrice,
             lineTotal: item.lineTotal,
             isOptional: item.isOptional,

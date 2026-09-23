@@ -1,10 +1,14 @@
-import type { Prisma, QuoteItemKind, QuoteStatus } from "@prisma/client";
+import type { Prisma, QuoteItemKind, QuoteQuantityUnit, QuoteStatus } from "@prisma/client";
 
 export interface QuoteItemView {
   id: string;
+  scopeKey: string;
+  carriedFromQuoteItemId: string | null;
   kind: QuoteItemKind;
   description: string;
+  displayNote: string | null;
   quantity: number;
+  quantityUnit: QuoteQuantityUnit;
   unitPrice: number;
   lineTotal: number;
   isOptional: boolean;
@@ -59,9 +63,13 @@ export interface QuoteRecord {
   updatedAt: Date;
   items: Array<{
     id: string;
+    scopeKey: string;
+    carriedFromQuoteItemId: string | null;
     kind: QuoteItemKind;
     description: string;
+    displayNote: string | null;
     quantity: Prisma.Decimal;
+    quantityUnit: QuoteQuantityUnit;
     unitPrice: bigint;
     lineTotal: bigint;
     isOptional: boolean;
@@ -79,9 +87,13 @@ export function toQuoteView(quote: QuoteRecord): QuoteView {
     currency: quote.currency,
     items: quote.items.map((item) => ({
       id: item.id,
+      scopeKey: item.scopeKey,
+      carriedFromQuoteItemId: item.carriedFromQuoteItemId,
       kind: item.kind,
       description: item.description,
+      displayNote: item.displayNote,
       quantity: Number(item.quantity.toString()),
+      quantityUnit: item.quantityUnit,
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
       isOptional: item.isOptional,

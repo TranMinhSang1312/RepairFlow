@@ -16,7 +16,7 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
-import { QuoteItemKind } from "@prisma/client";
+import { QuoteItemKind, QuoteQuantityUnit } from "@prisma/client";
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim() : value;
@@ -46,10 +46,24 @@ export class CreateQuoteItemDto {
   @Matches(/\S/, { message: "description must contain a non-whitespace character" })
   description!: string;
 
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(1000)
+  displayNote?: string | null;
+
+  @IsOptional()
+  @Transform(normalizeUuid)
+  @IsUUID()
+  carriedFromQuoteItemId?: string | null;
+
   @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })
   @Min(0.01)
   @Max(9_999_999_999.99)
   quantity!: number;
+
+  @IsEnum(QuoteQuantityUnit)
+  quantityUnit: QuoteQuantityUnit = QuoteQuantityUnit.EACH;
 
   @IsInt()
   @Min(0)
