@@ -355,12 +355,13 @@ describe("quote send API", () => {
 
     const repairingOrder = await createOrder({ status: RepairOrderStatus.REPAIRING });
     const repairingQuote = await createDraft(repairingOrder);
-    await sendRequest(repairingQuote.id, "COPY_LINK", {
+    const missingApproval = await sendRequest(repairingQuote.id, "COPY_LINK", {
       token: fixture.receptionistToken,
-    }).expect(200);
+    }).expect(409);
+    expect(missingApproval.body.error.code).toBe("REPAIR_ORDER_GUARD_FAILED");
     expect(
       await prisma.repairOrder.findUniqueOrThrow({ where: { id: repairingOrder } }),
-    ).toMatchObject({ status: RepairOrderStatus.AWAITING_APPROVAL, lockVersion: 1 });
+    ).toMatchObject({ status: RepairOrderStatus.REPAIRING, lockVersion: 0 });
 
     const awaitingOrder = await createOrder({ status: RepairOrderStatus.AWAITING_APPROVAL });
     const awaitingQuote = await createDraft(awaitingOrder);

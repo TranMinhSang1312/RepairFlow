@@ -6,6 +6,8 @@ import {
   CompletionOutcome,
   Prisma,
   QuoteDecision,
+  QuoteItemKind,
+  QuoteQuantityUnit,
   QuoteStatus,
   RepairOrderStatus,
   TokenScope,
@@ -33,6 +35,17 @@ interface DecisionCalculation {
   status: QuoteStatus;
   approvedItems: QuoteItem[];
   approvedTotal: bigint;
+}
+
+interface ApprovedSnapshotItem {
+  id: string;
+  scopeKey: string;
+  kind: QuoteItemKind;
+  description: string;
+  quantity: number;
+  quantityUnit: QuoteQuantityUnit;
+  isOptional: boolean;
+  approvalGroup: string | null;
 }
 
 @Injectable()
@@ -80,110 +93,147 @@ export class PublicPortalService {
       request.get("user-agent") ?? "unknown",
     );
 
-    return this.idempotency.execute({
-      tenant: { shopId: preliminary.shopId },
-      scope: "public.quote-decision",
-      key: idempotencyKey,
-      request: {
-        tokenHash,
-        decision: dto.decision,
-        approvedItemIds,
-        customerNote,
-      },
-      responseStatus: HttpStatus.OK,
-      recordExpiresAt: () => preliminary.expiresAt,
-      onReplay: async (transaction) => {
-        const current = await this.repository.findToken(transaction, tokenHash);
-        this.assertReadable(current, TokenScope.DECIDE_QUOTE);
-        await this.repository.touchToken(transaction, current.id, new Date());
-      },
-      operation: async (transaction) => {
-        await this.repository.lock(transaction, preliminary.shopId, preliminary.repairOrderId);
-        const record = await this.repository.findToken(transaction, tokenHash);
-        this.assertReadable(record, TokenScope.DECIDE_QUOTE);
-        const quote = record.quoteVersion!;
-
-        if (quote.status !== QuoteStatus.SENT || quote.approval) {
-          throw new ApiException(
-            HttpStatus.CONFLICT,
-            "QUOTE_ALREADY_DECIDED",
-            "A final decision already exists for this quote.",
-          );
-        }
-        if (record.repairOrder.status !== RepairOrderStatus.AWAITING_APPROVAL) {
-          throw new ApiException(
-            HttpStatus.CONFLICT,
-            "REPAIR_ORDER_GUARD_FAILED",
-            "The repair order is not awaiting quote approval.",
-          );
-        }
-
-        const calculation = this.calculateDecision(
-          quote.items,
-          quote.discount,
-          dto.decision,
+    try {
+      return await this.idempotency.execute({
+        tenant: { shopId: preliminary.shopId },
+        scope: "public.quote-decision",
+        key: idempotencyKey,
+        request: {
+          tokenHash,
+          decision: dto.decision,
           approvedItemIds,
-        );
-        const decidedAt = new Date();
-        if (
-          !(await this.repository.updateQuoteDecision(transaction, {
+          customerNote,
+        },
+        responseStatus: HttpStatus.OK,
+        recordExpiresAt: () => preliminary.expiresAt,
+        onReplay: async (transaction) => {
+          const current = await this.repository.findToken(transaction, tokenHash);
+          this.assertReadable(current, TokenScope.DECIDE_QUOTE);
+          await this.repository.touchToken(transaction, current.id, new Date());
+        },
+        operation: async (transaction) => {
+          await this.repository.lock(transaction, preliminary.shopId, preliminary.repairOrderId);
+          const record = await this.repository.findToken(transaction, tokenHash);
+          this.assertReadable(record, TokenScope.DECIDE_QUOTE);
+          const quote = record.quoteVersion!;
+
+          if (quote.status !== QuoteStatus.SENT || quote.approval) {
+            throw new ApiException(
+              HttpStatus.CONFLICT,
+              "QUOTE_ALREADY_DECIDED",
+              "A final decision already exists for this quote.",
+            );
+          }
+          if (record.repairOrder.status !== RepairOrderStatus.AWAITING_APPROVAL) {
+            throw new ApiException(
+              HttpStatus.CONFLICT,
+              "REPAIR_ORDER_GUARD_FAILED",
+              "The repair order is not awaiting quote approval.",
+            );
+          }
+
+          const calculation = this.calculateDecision(
+            quote.items,
+            quote.discount,
+            dto.decision,
+            approvedItemIds,
+          );
+          const lineageCount = await this.validateStoredLineage(
+            transaction,
+            record.shopId,
+            record.repairOrderId,
+            quote,
+          );
+          const decidedAt = new Date();
+          if (
+            !(await this.repository.updateQuoteDecision(transaction, {
+              shopId: record.shopId,
+              quoteVersionId: quote.id,
+              status: calculation.status,
+              decidedAt,
+            }))
+          ) {
+            throw new ApiException(
+              HttpStatus.CONFLICT,
+              "QUOTE_ALREADY_DECIDED",
+              "A final decision already exists for this quote.",
+            );
+          }
+
+          await this.repository.createApproval(transaction, {
             shopId: record.shopId,
             quoteVersionId: quote.id,
-            status: calculation.status,
+            decision: dto.decision,
+            approvedItemSnapshot: this.approvedSnapshot(calculation.approvedItems),
+            approvedTotal: calculation.approvedTotal,
+            customerNote,
+            actorFingerprint,
+            idempotencyKeyHash: this.tokens.idempotencyKeyHash(idempotencyKey!),
             decidedAt,
-          }))
-        ) {
-          throw new ApiException(
-            HttpStatus.CONFLICT,
-            "QUOTE_ALREADY_DECIDED",
-            "A final decision already exists for this quote.",
-          );
-        }
+          });
 
-        await this.repository.createApproval(transaction, {
-          shopId: record.shopId,
-          quoteVersionId: quote.id,
-          decision: dto.decision,
-          approvedItemSnapshot: this.approvedSnapshot(calculation.approvedItems),
-          approvedTotal: calculation.approvedTotal,
-          customerNote,
-          actorFingerprint,
-          idempotencyKeyHash: this.tokens.idempotencyKeyHash(idempotencyKey!),
-          decidedAt,
-        });
+          if (dto.decision !== QuoteDecision.DECLINED) {
+            await this.repository.reconcilePartRequirements(transaction, {
+              shopId: record.shopId,
+              repairOrderId: record.repairOrderId,
+              currentScopeKeys: calculation.approvedItems.map((item) => item.scopeKey),
+            });
+          }
 
-        const declined = dto.decision === QuoteDecision.DECLINED;
-        await this.stateMachine.transitionInTransaction(transaction, {
-          shopId: record.shopId,
-          repairOrderId: record.repairOrderId,
-          targetStatus: declined ? RepairOrderStatus.READY_FOR_PICKUP : RepairOrderStatus.APPROVED,
-          completionOutcome: declined ? CompletionOutcome.DECLINED_QUOTE : null,
-          reason: null,
-          expectedLockVersion: record.repairOrder.lockVersion,
-          actor: { type: ActorType.CUSTOMER_TOKEN, userId: null, role: null },
-          requestId,
-        });
-        await this.repository.appendDecisionArtifacts(transaction, {
-          shopId: record.shopId,
-          repairOrderId: record.repairOrderId,
-          quoteVersionId: quote.id,
-          decision: dto.decision,
-          approvedTotal: calculation.approvedTotal,
-          decidedAt,
-          requestId,
-        });
-        await this.repository.touchToken(transaction, record.id, decidedAt);
-
-        return {
-          data: {
+          const declined = dto.decision === QuoteDecision.DECLINED;
+          await this.stateMachine.transitionAfterQuoteDecision(transaction, {
+            shopId: record.shopId,
+            repairOrderId: record.repairOrderId,
+            targetStatus: declined
+              ? RepairOrderStatus.READY_FOR_PICKUP
+              : RepairOrderStatus.APPROVED,
+            completionOutcome: declined ? CompletionOutcome.DECLINED_QUOTE : null,
+            reason: null,
+            expectedLockVersion: record.repairOrder.lockVersion,
+            actor: { type: ActorType.CUSTOMER_TOKEN, userId: null, role: null },
+            requestId,
+          });
+          await this.repository.appendDecisionArtifacts(transaction, {
+            shopId: record.shopId,
+            repairOrderId: record.repairOrderId,
             quoteVersionId: quote.id,
             decision: dto.decision,
-            approvedTotal: Number(calculation.approvedTotal),
-            decidedAt: decidedAt.toISOString(),
-          },
-        };
-      },
-    });
+            approvedTotal: calculation.approvedTotal,
+            decidedAt,
+            requestId,
+          });
+          await this.repository.touchToken(transaction, record.id, decidedAt);
+          if (lineageCount > 0) {
+            await this.repository.appendLineageAudit(transaction, {
+              shopId: record.shopId,
+              entityId: record.repairOrderId,
+              requestId,
+              accepted: true,
+              reason: "reconciled_public_decision_lineage",
+            });
+          }
+
+          return {
+            data: {
+              quoteVersionId: quote.id,
+              decision: dto.decision,
+              approvedTotal: Number(calculation.approvedTotal),
+              decidedAt: decidedAt.toISOString(),
+            },
+          };
+        },
+      });
+    } catch (error) {
+      if (this.isLineageError(error)) {
+        await this.repository.appendRejectedLineageAudit({
+          shopId: preliminary.shopId,
+          entityId: preliminary.repairOrderId,
+          requestId,
+          reason: "invalid_stored_lineage",
+        });
+      }
+      throw error;
+    }
   }
 
   private assertReadable(
@@ -288,14 +338,116 @@ export class PublicPortalService {
   private approvedSnapshot(items: QuoteItem[]): Prisma.InputJsonValue {
     return items.map((item) => ({
       id: item.id,
+      scopeKey: item.scopeKey,
+      carriedFromQuoteItemId: item.carriedFromQuoteItemId,
       kind: item.kind,
       description: item.description,
+      displayNote: item.displayNote,
       quantity: Number(item.quantity.toString()),
+      quantityUnit: item.quantityUnit,
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
       isOptional: item.isOptional,
       approvalGroup: item.approvalGroup,
     }));
+  }
+
+  private async validateStoredLineage(
+    transaction: Prisma.TransactionClient,
+    shopId: string,
+    repairOrderId: string,
+    quote: NonNullable<PublicTokenRecord["quoteVersion"]>,
+  ): Promise<number> {
+    const carried = quote.items.filter((item) => item.carriedFromQuoteItemId);
+    if (carried.length === 0) return 0;
+    const referenceIds = carried.map((item) => item.carriedFromQuoteItemId!);
+    if (new Set(referenceIds).size !== referenceIds.length) {
+      throw this.lineageInvalid("Stored replacement lineage contains duplicate ancestry.");
+    }
+
+    const prior = await this.repository.findPriorBindingApproval(
+      transaction,
+      shopId,
+      repairOrderId,
+      quote.versionNo,
+    );
+    if (!prior?.approval) {
+      throw this.lineageInvalid("The prior binding approval is unavailable.");
+    }
+    const snapshot = this.parseApprovedSnapshot(prior.approval.approvedItemSnapshot);
+    const approvedById = new Map(snapshot.map((item) => [item.id, item]));
+    const priorById = new Map(prior.items.map((item) => [item.id, item]));
+    for (const item of carried) {
+      const referenceId = item.carriedFromQuoteItemId!;
+      const priorItem = priorById.get(referenceId);
+      const approvedItem = approvedById.get(referenceId);
+      if (
+        !priorItem ||
+        !approvedItem ||
+        item.scopeKey !== priorItem.scopeKey ||
+        approvedItem.scopeKey !== priorItem.scopeKey ||
+        item.kind !== priorItem.kind ||
+        this.normalizeIdentity(item.description) !==
+          this.normalizeIdentity(priorItem.description) ||
+        !item.quantity.equals(priorItem.quantity) ||
+        item.quantityUnit !== priorItem.quantityUnit ||
+        item.isOptional !== priorItem.isOptional ||
+        this.normalizeGroup(item.approvalGroup) !== this.normalizeGroup(priorItem.approvalGroup)
+      ) {
+        throw this.lineageInvalid("Stored replacement lineage is inconsistent.");
+      }
+    }
+    return carried.length;
+  }
+
+  private parseApprovedSnapshot(value: Prisma.JsonValue): ApprovedSnapshotItem[] {
+    if (!Array.isArray(value)) throw this.lineageInvalid("The approval snapshot is invalid.");
+    return value.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw this.lineageInvalid("The approval snapshot is invalid.");
+      }
+      const item = entry as Record<string, Prisma.JsonValue>;
+      if (
+        typeof item.id !== "string" ||
+        typeof item.scopeKey !== "string" ||
+        typeof item.kind !== "string" ||
+        typeof item.description !== "string" ||
+        typeof item.quantity !== "number" ||
+        typeof item.quantityUnit !== "string" ||
+        typeof item.isOptional !== "boolean" ||
+        !(item.approvalGroup === null || typeof item.approvalGroup === "string")
+      ) {
+        throw this.lineageInvalid("The approval snapshot is invalid.");
+      }
+      return item as unknown as ApprovedSnapshotItem;
+    });
+  }
+
+  private normalizeIdentity(value: string): string {
+    return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase("vi");
+  }
+
+  private normalizeGroup(value: string | null): string | null {
+    return value ? this.normalizeIdentity(value) : null;
+  }
+
+  private isLineageError(error: unknown): boolean {
+    if (!(error instanceof ApiException)) return false;
+    const response = error.getResponse();
+    return (
+      typeof response === "object" &&
+      response !== null &&
+      "code" in response &&
+      response.code === "QUOTE_SCOPE_LINEAGE_INVALID"
+    );
+  }
+
+  private lineageInvalid(message: string): ApiException {
+    return new ApiException(
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "QUOTE_SCOPE_LINEAGE_INVALID",
+      message,
+    );
   }
 
   private toPublicOrder(record: PublicTokenRecord): PublicOrderResponse {
@@ -328,9 +480,13 @@ export class PublicPortalService {
       currency: quote.currency,
       items: quote.items.map((item) => ({
         id: item.id,
+        scopeKey: item.scopeKey,
+        carriedFromQuoteItemId: item.carriedFromQuoteItemId,
         kind: item.kind,
         description: item.description,
+        displayNote: item.displayNote,
         quantity: Number(item.quantity.toString()),
+        quantityUnit: item.quantityUnit,
         unitPrice: Number(item.unitPrice),
         lineTotal: Number(item.lineTotal),
         isOptional: item.isOptional,

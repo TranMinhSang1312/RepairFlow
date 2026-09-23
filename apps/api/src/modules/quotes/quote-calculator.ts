@@ -1,9 +1,13 @@
-import { Prisma, type QuoteItemKind } from "@prisma/client";
+import { Prisma, type QuoteItemKind, type QuoteQuantityUnit } from "@prisma/client";
 
 export interface QuoteCalculationItem {
   kind: QuoteItemKind;
   description: string;
+  displayNote: string | null;
+  carriedFromQuoteItemId: string | null;
+  scopeKey: string | null;
   quantity: number;
+  quantityUnit: QuoteQuantityUnit;
   unitPrice: number;
   isOptional: boolean;
   approvalGroup: string | null;

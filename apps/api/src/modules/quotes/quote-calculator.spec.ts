@@ -1,4 +1,4 @@
-import { QuoteItemKind } from "@prisma/client";
+import { QuoteItemKind, QuoteQuantityUnit } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import { calculateQuote } from "./quote-calculator.js";
@@ -6,7 +6,11 @@ import { calculateQuote } from "./quote-calculator.js";
 const item = (quantity: number, unitPrice: number) => ({
   kind: QuoteItemKind.SERVICE,
   description: "Decimal-safe service",
+  displayNote: null,
+  carriedFromQuoteItemId: null,
+  scopeKey: null,
   quantity,
+  quantityUnit: QuoteQuantityUnit.EACH,
   unitPrice,
   isOptional: false,
   approvalGroup: null,

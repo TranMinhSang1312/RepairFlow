@@ -5,9 +5,13 @@ import {
   ActorType,
   CompletionOutcome,
   MembershipRole,
+  PartRequirementStatus,
+  QcRunResult,
   QuoteDecision,
+  QuoteItemKind,
   QuoteStatus,
   RepairOrderStatus,
+  WorkLogType,
 } from "@prisma/client";
 
 import { ApiException } from "../../../common/api-exception.js";
@@ -15,15 +19,25 @@ import { IdempotencyService } from "../../../common/idempotency/idempotency.serv
 import type { TenantContext } from "../../../common/tenant/tenant-context.js";
 import { toRepairOrderView, type RepairOrderResponse } from "../repair-order.types.js";
 import type { TransitionRepairOrderDto } from "./transition-repair-order.dto.js";
-import { isSupportedTransition } from "./repair-order-transition-graph.js";
+import {
+  isSupportedTransition,
+  RepairOrderTransitionSource,
+} from "./repair-order-transition-graph.js";
 import {
   RepairOrderStateMachineRepository,
   type TransitionOrderRecord,
 } from "./repair-order-state-machine.repository.js";
 import type {
+  InternalRepairOrderTransitionCommand,
   RepairOrderTransitionCommand,
   TransactionClient,
 } from "./repair-order-state-machine.types.js";
+
+interface ApprovedScopeItem {
+  id: string;
+  scopeKey: string;
+  kind: QuoteItemKind;
+}
 
 @Injectable()
 export class RepairOrderStateMachineService {
@@ -49,6 +63,7 @@ export class RepairOrderStateMachineService {
       completionOutcome: dto.completionOutcome ?? null,
       reason: dto.reason || null,
       expectedLockVersion: dto.expectedLockVersion,
+      source: RepairOrderTransitionSource.DIRECT,
       actor: { type: ActorType.USER, userId: tenant.userId, role: tenant.role },
       requestId: tenant.requestId,
     };
@@ -92,12 +107,12 @@ export class RepairOrderStateMachineService {
       );
     }
 
-    this.assertAllowedEdge(order.status, command.targetStatus);
-    this.assertPermission(order.status, command.targetStatus, command.actor);
-    this.assertCompletionOutcome(command);
-    this.assertGuards(order, command.targetStatus);
+    this.assertAllowedEdge(order.status, command.targetStatus, command.source);
+    this.assertPermission(order.status, command.targetStatus, command);
+    this.assertCompletionOutcome(order.status, command);
+    this.assertGuards(order, command);
 
-    const updated = await this.repository.updateStatus(transaction, command, order.status);
+    const updated = await this.repository.updateStatus(transaction, command, order);
     if (!updated) {
       throw new ApiException(
         HttpStatus.CONFLICT,
@@ -118,6 +133,46 @@ export class RepairOrderStateMachineService {
     return result;
   }
 
+  transitionAfterQuoteSend(
+    transaction: TransactionClient,
+    command: InternalRepairOrderTransitionCommand,
+  ) {
+    return this.transitionInTransaction(transaction, {
+      ...command,
+      source: RepairOrderTransitionSource.QUOTE_SEND,
+    });
+  }
+
+  transitionAfterQuoteDecision(
+    transaction: TransactionClient,
+    command: InternalRepairOrderTransitionCommand,
+  ) {
+    return this.transitionInTransaction(transaction, {
+      ...command,
+      source: RepairOrderTransitionSource.QUOTE_DECISION,
+    });
+  }
+
+  transitionAfterQcFailure(
+    transaction: TransactionClient,
+    command: InternalRepairOrderTransitionCommand & { evidenceId: string },
+  ) {
+    return this.transitionInTransaction(transaction, {
+      ...command,
+      source: RepairOrderTransitionSource.QC_RUN,
+    });
+  }
+
+  transitionAfterHandover(
+    transaction: TransactionClient,
+    command: InternalRepairOrderTransitionCommand & { evidenceId: string },
+  ) {
+    return this.transitionInTransaction(transaction, {
+      ...command,
+      source: RepairOrderTransitionSource.HANDOVER,
+    });
+  }
+
   private actorCanSee(
     assignedTechnicianUserId: string | undefined,
     command: RepairOrderTransitionCommand,
@@ -128,8 +183,12 @@ export class RepairOrderStateMachineService {
     );
   }
 
-  private assertAllowedEdge(from: RepairOrderStatus, to: RepairOrderStatus): void {
-    if (!isSupportedTransition(from, to)) {
+  private assertAllowedEdge(
+    from: RepairOrderStatus,
+    to: RepairOrderStatus,
+    source: RepairOrderTransitionCommand["source"],
+  ): void {
+    if (!isSupportedTransition(from, to, source)) {
       throw new ApiException(
         HttpStatus.CONFLICT,
         "REPAIR_ORDER_INVALID_TRANSITION",
@@ -141,22 +200,48 @@ export class RepairOrderStateMachineService {
   private assertPermission(
     from: RepairOrderStatus,
     to: RepairOrderStatus,
-    actor: RepairOrderTransitionCommand["actor"],
+    command: RepairOrderTransitionCommand,
   ): void {
+    const actor = command.actor;
+    const directOwner =
+      command.source === RepairOrderTransitionSource.DIRECT && actor.role === MembershipRole.OWNER;
+    const assignedTechnicianTransition =
+      command.source === RepairOrderTransitionSource.DIRECT &&
+      actor.role === MembershipRole.TECHNICIAN &&
+      ((from === RepairOrderStatus.RECEIVED && to === RepairOrderStatus.DIAGNOSING) ||
+        (from === RepairOrderStatus.APPROVED && to === RepairOrderStatus.WAITING_PARTS) ||
+        ((from === RepairOrderStatus.APPROVED || from === RepairOrderStatus.WAITING_PARTS) &&
+          to === RepairOrderStatus.REPAIRING) ||
+        (from === RepairOrderStatus.REPAIRING && to === RepairOrderStatus.QUALITY_CHECK) ||
+        (from === RepairOrderStatus.QUALITY_CHECK && to === RepairOrderStatus.READY_FOR_PICKUP));
+    const receptionistDirect =
+      command.source === RepairOrderTransitionSource.DIRECT &&
+      actor.role === MembershipRole.RECEPTIONIST &&
+      ((from === RepairOrderStatus.AWAITING_APPROVAL && to === RepairOrderStatus.DIAGNOSING) ||
+        (from === RepairOrderStatus.DIAGNOSING &&
+          (to === RepairOrderStatus.AWAITING_APPROVAL ||
+            to === RepairOrderStatus.READY_FOR_PICKUP)) ||
+        (from === RepairOrderStatus.QUALITY_CHECK && to === RepairOrderStatus.READY_FOR_PICKUP));
+    const quoteSender =
+      command.source === RepairOrderTransitionSource.QUOTE_SEND &&
+      (actor.role === MembershipRole.OWNER || actor.role === MembershipRole.RECEPTIONIST);
+    const quoteDecision =
+      command.source === RepairOrderTransitionSource.QUOTE_DECISION &&
+      actor.type === ActorType.CUSTOMER_TOKEN;
+    const qcCaller =
+      command.source === RepairOrderTransitionSource.QC_RUN &&
+      (actor.role === MembershipRole.OWNER || actor.role === MembershipRole.TECHNICIAN);
+    const handoverCaller =
+      command.source === RepairOrderTransitionSource.HANDOVER &&
+      (actor.role === MembershipRole.OWNER || actor.role === MembershipRole.RECEPTIONIST);
     const permitted =
-      actor.role === MembershipRole.OWNER ||
-      (from === RepairOrderStatus.RECEIVED &&
-        to === RepairOrderStatus.DIAGNOSING &&
-        actor.role === MembershipRole.TECHNICIAN) ||
-      (from === RepairOrderStatus.AWAITING_APPROVAL &&
-        to === RepairOrderStatus.DIAGNOSING &&
-        actor.role === MembershipRole.RECEPTIONIST) ||
-      ((from === RepairOrderStatus.DIAGNOSING || from === RepairOrderStatus.REPAIRING) &&
-        to === RepairOrderStatus.AWAITING_APPROVAL &&
-        actor.role === MembershipRole.RECEPTIONIST) ||
-      (actor.type === ActorType.CUSTOMER_TOKEN &&
-        from === RepairOrderStatus.AWAITING_APPROVAL &&
-        (to === RepairOrderStatus.APPROVED || to === RepairOrderStatus.READY_FOR_PICKUP));
+      directOwner ||
+      assignedTechnicianTransition ||
+      receptionistDirect ||
+      quoteSender ||
+      quoteDecision ||
+      qcCaller ||
+      handoverCaller;
     if (!permitted) {
       throw new ApiException(
         HttpStatus.FORBIDDEN,
@@ -166,24 +251,47 @@ export class RepairOrderStateMachineService {
     }
   }
 
-  private assertCompletionOutcome(command: RepairOrderTransitionCommand): void {
+  private assertCompletionOutcome(
+    from: RepairOrderStatus,
+    command: RepairOrderTransitionCommand,
+  ): void {
+    let allowed: ReadonlySet<CompletionOutcome> | null = null;
+    if (
+      from === RepairOrderStatus.AWAITING_APPROVAL &&
+      command.source === RepairOrderTransitionSource.QUOTE_DECISION
+    ) {
+      allowed = new Set([CompletionOutcome.DECLINED_QUOTE]);
+    } else if (
+      from === RepairOrderStatus.DIAGNOSING &&
+      command.source === RepairOrderTransitionSource.DIRECT
+    ) {
+      allowed = new Set([
+        CompletionOutcome.UNREPAIRABLE,
+        CompletionOutcome.NO_FAULT_FOUND,
+        CompletionOutcome.CUSTOMER_CANCELLED,
+      ]);
+    } else if (
+      from === RepairOrderStatus.QUALITY_CHECK &&
+      command.source === RepairOrderTransitionSource.DIRECT
+    ) {
+      allowed = new Set([CompletionOutcome.REPAIRED]);
+    }
+
     if (
       command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP &&
-      command.completionOutcome !== CompletionOutcome.DECLINED_QUOTE
+      !allowed?.has(command.completionOutcome!)
     ) {
       throw new ApiException(
         HttpStatus.CONFLICT,
         "COMPLETION_OUTCOME_REQUIRED",
-        "Declining a quote requires the DECLINED_QUOTE completion outcome.",
+        "The exact completion outcome required by this transition must be supplied.",
       );
     }
-    if (command.completionOutcome !== null && command.completionOutcome !== undefined) {
-      if (
-        command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP &&
-        command.completionOutcome === CompletionOutcome.DECLINED_QUOTE
-      ) {
-        return;
-      }
+    if (
+      command.targetStatus !== RepairOrderStatus.READY_FOR_PICKUP &&
+      command.completionOutcome !== null &&
+      command.completionOutcome !== undefined
+    ) {
       throw new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         "VALIDATION_FAILED",
@@ -199,7 +307,8 @@ export class RepairOrderStateMachineService {
     }
   }
 
-  private assertGuards(order: TransitionOrderRecord, targetStatus: RepairOrderStatus): void {
+  private assertGuards(order: TransitionOrderRecord, command: RepairOrderTransitionCommand): void {
+    const targetStatus = command.targetStatus;
     if (
       order.status === RepairOrderStatus.RECEIVED &&
       targetStatus === RepairOrderStatus.DIAGNOSING
@@ -232,17 +341,58 @@ export class RepairOrderStateMachineService {
     }
 
     if (
+      order.status === RepairOrderStatus.DIAGNOSING &&
+      targetStatus === RepairOrderStatus.READY_FOR_PICKUP
+    ) {
+      if (command.completionOutcome === CompletionOutcome.CUSTOMER_CANCELLED) {
+        if (!command.reason?.trim()) {
+          throw this.guardFailed("A cancellation note is required.");
+        }
+        const quoteWasSentOrAccepted = order.quoteVersions.some(
+          (quote) =>
+            quote.sentAt !== null ||
+            quote.status === QuoteStatus.SENT ||
+            quote.status === QuoteStatus.ACCEPTED ||
+            quote.status === QuoteStatus.PARTIALLY_ACCEPTED ||
+            quote.status === QuoteStatus.DECLINED ||
+            quote.status === QuoteStatus.SUPERSEDED,
+        );
+        const technicalWorkExists = order.workLogs.some(
+          (workLog) => this.workLogSemanticType(order.workLogs, workLog) !== null,
+        );
+        if (
+          quoteWasSentOrAccepted ||
+          order._count.payments > 0 ||
+          technicalWorkExists ||
+          order._count.partsUsed > 0
+        ) {
+          throw this.guardFailed(
+            "A cancellation is unavailable after quote, payment, technical work, or part usage.",
+          );
+        }
+      } else if (order.diagnoses.length === 0) {
+        throw this.guardFailed("A diagnosis is required before this non-repair outcome.");
+      }
+    }
+
+    if (
       (order.status === RepairOrderStatus.DIAGNOSING ||
         order.status === RepairOrderStatus.REPAIRING) &&
       targetStatus === RepairOrderStatus.AWAITING_APPROVAL &&
-      (!order.quoteVersions[0] ||
-        order.quoteVersions[0].status !== QuoteStatus.SENT ||
-        order.quoteVersions[0].items.length === 0)
+      !order.quoteVersions.some(
+        (quote) => quote.status === QuoteStatus.SENT && quote.items.length > 0,
+      )
     ) {
       throw this.guardFailed("A sent quote with at least one item is required for approval.");
     }
 
-    const currentQuote = order.quoteVersions[0];
+    const currentQuote = order.quoteVersions.find(
+      (quote) =>
+        quote.approval &&
+        (quote.status === QuoteStatus.ACCEPTED ||
+          quote.status === QuoteStatus.PARTIALLY_ACCEPTED ||
+          quote.status === QuoteStatus.DECLINED),
+    );
     if (
       order.status === RepairOrderStatus.AWAITING_APPROVAL &&
       targetStatus === RepairOrderStatus.APPROVED &&
@@ -264,6 +414,184 @@ export class RepairOrderStateMachineService {
     ) {
       throw this.guardFailed("A declined current quote is required before pickup.");
     }
+
+    if (
+      order.status === RepairOrderStatus.APPROVED &&
+      targetStatus === RepairOrderStatus.WAITING_PARTS
+    ) {
+      const scope = this.approvedScope(order);
+      const partScopes = new Set(
+        scope.filter((item) => item.kind === QuoteItemKind.PART).map((item) => item.scopeKey),
+      );
+      const hasUnavailableRequirement = order.partRequirements.some(
+        (requirement) =>
+          partScopes.has(requirement.scopeKey) &&
+          requirement.status !== PartRequirementStatus.AVAILABLE &&
+          requirement.status !== PartRequirementStatus.CANCELLED,
+      );
+      if (!hasUnavailableRequirement) {
+        throw this.guardFailed("A current approved part must be unavailable before waiting.");
+      }
+    }
+
+    if (
+      (order.status === RepairOrderStatus.APPROVED ||
+        order.status === RepairOrderStatus.WAITING_PARTS) &&
+      targetStatus === RepairOrderStatus.REPAIRING
+    ) {
+      if (!order.assignments[0]) {
+        throw new ApiException(
+          HttpStatus.CONFLICT,
+          "TECHNICIAN_NOT_ASSIGNED",
+          "An active technician assignment is required.",
+        );
+      }
+      const scope = this.approvedScope(order);
+      if (scope.length === 0) {
+        throw this.guardFailed("A non-empty approved scope is required before repair starts.");
+      }
+      for (const part of scope.filter((item) => item.kind === QuoteItemKind.PART)) {
+        const available = order.partRequirements.filter(
+          (requirement) =>
+            requirement.scopeKey === part.scopeKey &&
+            requirement.status === PartRequirementStatus.AVAILABLE,
+        );
+        if (available.length !== 1) {
+          throw this.guardFailed("Every current approved part must be available before repair.");
+        }
+      }
+    }
+
+    if (
+      order.status === RepairOrderStatus.REPAIRING &&
+      targetStatus === RepairOrderStatus.QUALITY_CHECK
+    ) {
+      const actionable = this.approvedScope(order).filter(
+        (item) => item.kind === QuoteItemKind.SERVICE || item.kind === QuoteItemKind.PART,
+      );
+      const coveredScopes = this.effectiveTechnicalScopes(order.workLogs);
+      if (actionable.some((item) => !coveredScopes.has(item.scopeKey))) {
+        throw this.guardFailed("Effective technical work is required for every approved item.");
+      }
+    }
+
+    if (
+      order.status === RepairOrderStatus.QUALITY_CHECK &&
+      targetStatus === RepairOrderStatus.READY_FOR_PICKUP &&
+      order.qcRuns[0]?.result !== QcRunResult.PASS
+    ) {
+      throw this.guardFailed("The latest QC run must pass before the order is ready.");
+    }
+
+    if (
+      command.source === RepairOrderTransitionSource.QC_RUN &&
+      !this.isValidFailedQcEvidence(order, command.evidenceId)
+    ) {
+      throw this.guardFailed("A staged failed QC run with notes is required.");
+    }
+
+    if (
+      command.source === RepairOrderTransitionSource.HANDOVER &&
+      (!order.handover || order.handover.id !== command.evidenceId)
+    ) {
+      throw this.guardFailed("A staged handover is required before completion.");
+    }
+  }
+
+  private approvedScope(order: TransitionOrderRecord): ApprovedScopeItem[] {
+    const binding = order.quoteVersions.find(
+      (quote) =>
+        (quote.status === QuoteStatus.ACCEPTED ||
+          quote.status === QuoteStatus.PARTIALLY_ACCEPTED) &&
+        quote.approval,
+    );
+    const snapshot = binding?.approval?.approvedItemSnapshot;
+    if (!Array.isArray(snapshot)) {
+      throw this.guardFailed("A binding approved scope is required.");
+    }
+    const items: ApprovedScopeItem[] = [];
+    const ids = new Set<string>();
+    const scopeKeys = new Set<string>();
+    for (const value of snapshot) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw this.guardFailed("The approved scope is invalid.");
+      }
+      const item = value as Record<string, unknown>;
+      if (
+        typeof item.id !== "string" ||
+        typeof item.scopeKey !== "string" ||
+        !Object.values(QuoteItemKind).includes(item.kind as QuoteItemKind) ||
+        ids.has(item.id) ||
+        scopeKeys.has(item.scopeKey)
+      ) {
+        throw this.guardFailed("The approved scope is invalid.");
+      }
+      ids.add(item.id);
+      scopeKeys.add(item.scopeKey);
+      items.push({ id: item.id, scopeKey: item.scopeKey, kind: item.kind as QuoteItemKind });
+    }
+    return items;
+  }
+
+  private effectiveTechnicalScopes(logs: TransitionOrderRecord["workLogs"]): ReadonlySet<string> {
+    const supersededIds = new Set(
+      logs.flatMap((log) => (log.supersedesId ? [log.supersedesId] : [])),
+    );
+    const scopes = new Set<string>();
+    for (const log of logs.filter((candidate) => !supersededIds.has(candidate.id))) {
+      const scopeKey = this.workLogScope(logs, log);
+      if (this.workLogSemanticType(logs, log) && scopeKey) {
+        scopes.add(scopeKey);
+      }
+    }
+    return scopes;
+  }
+
+  private workLogSemanticType(
+    logs: TransitionOrderRecord["workLogs"],
+    log: TransitionOrderRecord["workLogs"][number],
+  ): WorkLogType | null {
+    let current = log;
+    const seen = new Set<string>();
+    while (current.type === WorkLogType.CORRECTION && current.supersedesId) {
+      if (seen.has(current.id)) return null;
+      seen.add(current.id);
+      const previous = logs.find((candidate) => candidate.id === current.supersedesId);
+      if (!previous) return null;
+      current = previous;
+    }
+    return current.type === WorkLogType.REPAIR || current.type === WorkLogType.TEST
+      ? current.type
+      : null;
+  }
+
+  private workLogScope(
+    logs: TransitionOrderRecord["workLogs"],
+    log: TransitionOrderRecord["workLogs"][number],
+  ): string | null {
+    let current = log;
+    const seen = new Set<string>();
+    while (!current.quoteItem?.scopeKey && current.supersedesId) {
+      if (seen.has(current.id)) return null;
+      seen.add(current.id);
+      const previous = logs.find((candidate) => candidate.id === current.supersedesId);
+      if (!previous) return null;
+      current = previous;
+    }
+    return current.quoteItem?.scopeKey ?? null;
+  }
+
+  private isValidFailedQcEvidence(
+    order: TransitionOrderRecord,
+    evidenceId: string | null | undefined,
+  ): boolean {
+    const latest = order.qcRuns[0];
+    return Boolean(
+      latest &&
+      latest.id === evidenceId &&
+      latest.result === QcRunResult.FAIL &&
+      latest.notes?.trim(),
+    );
   }
 
   private guardFailed(message: string): ApiException {

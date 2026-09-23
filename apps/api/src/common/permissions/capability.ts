@@ -19,10 +19,24 @@ export const Capability = {
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
 const allCapabilities = new Set<Capability>(Object.values(Capability));
+const receptionistCapabilities = new Set<Capability>([
+  Capability.CUSTOMER_LIST,
+  Capability.CUSTOMER_WRITE,
+  Capability.DEVICE_LIST,
+  Capability.DEVICE_WRITE,
+  Capability.INTAKE_CREATE,
+  Capability.INTAKE_MEDIA_UPLOAD,
+  Capability.REPAIR_ORDER_LIST,
+  Capability.REPAIR_ORDER_READ_ASSIGNED,
+  Capability.ASSIGNMENT_MANAGE,
+  Capability.REPAIR_ORDER_TRANSITION,
+  Capability.QUOTE_DRAFT_WRITE,
+  Capability.QUOTE_SEND,
+]);
 
 export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capability>>> = {
   [MembershipRole.OWNER]: allCapabilities,
-  [MembershipRole.RECEPTIONIST]: allCapabilities,
+  [MembershipRole.RECEPTIONIST]: receptionistCapabilities,
   [MembershipRole.TECHNICIAN]: new Set([
     Capability.REPAIR_ORDER_READ_ASSIGNED,
     Capability.REPAIR_ORDER_TRANSITION,

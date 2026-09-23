@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs PrismaService at runtime for DI. */
 
 import { Injectable } from "@nestjs/common";
-import { MediaPurpose, Prisma, QuoteStatus, RepairOrderStatus } from "@prisma/client";
+import { MediaPurpose, Prisma, RepairOrderStatus } from "@prisma/client";
 
 import { PrismaService } from "../../../infra/database/prisma.service.js";
 import type {
@@ -31,27 +31,53 @@ const transitionOrderInclude = {
     where: { purpose: MediaPurpose.INTAKE, uploadedAt: { not: null }, expiresAt: null },
     select: { id: true },
   },
+  diagnoses: { select: { id: true }, take: 1 },
   quoteVersions: {
-    where: {
-      status: {
-        in: [
-          QuoteStatus.SENT,
-          QuoteStatus.ACCEPTED,
-          QuoteStatus.PARTIALLY_ACCEPTED,
-          QuoteStatus.DECLINED,
-        ],
-      },
-    },
     orderBy: [{ versionNo: "desc" as const }, { id: "desc" as const }],
-    take: 1,
     select: {
       id: true,
+      versionNo: true,
       status: true,
-      items: { take: 1, select: { id: true } },
-      approval: { select: { decision: true } },
+      sentAt: true,
+      items: {
+        orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          scopeKey: true,
+          carriedFromQuoteItemId: true,
+          kind: true,
+          description: true,
+          quantity: true,
+          quantityUnit: true,
+          unitPrice: true,
+          isOptional: true,
+          approvalGroup: true,
+        },
+      },
+      approval: { select: { decision: true, approvedItemSnapshot: true } },
     },
   },
-  _count: { select: { quoteVersions: true, payments: true, workLogs: true } },
+  workLogs: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      type: true,
+      supersedesId: true,
+      quoteItemId: true,
+      quoteItem: { select: { scopeKey: true } },
+    },
+  },
+  partRequirements: {
+    select: { id: true, quoteItemId: true, scopeKey: true, status: true },
+  },
+  partsUsed: { select: { id: true, quoteItemId: true, scopeKey: true } },
+  qcRuns: {
+    orderBy: [{ runNo: "desc" as const }],
+    take: 1,
+    select: { id: true, runNo: true, result: true, notes: true },
+  },
+  handover: { select: { id: true, handedOverAt: true } },
+  _count: { select: { quoteVersions: true, payments: true, workLogs: true, partsUsed: true } },
 } satisfies Prisma.RepairOrderInclude;
 
 export type TransitionOrderRecord = Prisma.RepairOrderGetPayload<{
@@ -82,20 +108,22 @@ export class RepairOrderStateMachineRepository {
   async updateStatus(
     transaction: TransactionClient,
     command: RepairOrderTransitionCommand,
-    fromStatus: RepairOrderStatus,
+    order: TransitionOrderRecord,
   ): Promise<boolean> {
     const result = await transaction.repairOrder.updateMany({
       where: {
         shopId: command.shopId,
         id: command.repairOrderId,
-        status: fromStatus,
+        status: order.status,
         lockVersion: command.expectedLockVersion,
       },
       data: {
         status: command.targetStatus,
-        completionOutcome: command.completionOutcome ?? null,
         ...(command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP
-          ? { readyAt: new Date() }
+          ? { completionOutcome: command.completionOutcome!, readyAt: new Date() }
+          : {}),
+        ...(command.targetStatus === RepairOrderStatus.COMPLETED && order.handover
+          ? { returnedAt: order.handover.handedOverAt }
           : {}),
         lockVersion: { increment: 1 },
       },

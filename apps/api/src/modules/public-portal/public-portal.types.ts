@@ -2,15 +2,20 @@ import type {
   CompletionOutcome,
   QuoteDecision,
   QuoteItemKind,
+  QuoteQuantityUnit,
   QuoteStatus,
   RepairOrderStatus,
 } from "@prisma/client";
 
 export interface PublicQuoteItemView {
   id: string;
+  scopeKey: string;
+  carriedFromQuoteItemId: string | null;
   kind: QuoteItemKind;
   description: string;
+  displayNote: string | null;
   quantity: number;
+  quantityUnit: QuoteQuantityUnit;
   unitPrice: number;
   lineTotal: number;
   isOptional: boolean;

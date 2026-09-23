@@ -1,4 +1,4 @@
-import { Prisma, QuoteItemKind, QuoteStatus } from "@prisma/client";
+import { Prisma, QuoteItemKind, QuoteQuantityUnit, QuoteStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import { toQuoteView } from "./quote.types.js";
@@ -25,9 +25,13 @@ describe("quote response mapping", () => {
       items: [
         {
           id: "00000000-0000-4000-8000-000000000003",
+          scopeKey: "00000000-0000-4000-8000-000000000004",
+          carriedFromQuoteItemId: null,
           kind: QuoteItemKind.SERVICE,
           description: "Service",
+          displayNote: null,
           quantity: new Prisma.Decimal("1.25"),
+          quantityUnit: QuoteQuantityUnit.HOUR,
           unitPrice: 1001n,
           lineTotal: 1251n,
           isOptional: false,
@@ -41,7 +45,15 @@ describe("quote response mapping", () => {
       discount: 51,
       total: 1200,
       createdAt: "2026-09-22T00:00:00.000Z",
-      items: [{ quantity: 1.25, unitPrice: 1001, lineTotal: 1251 }],
+      items: [
+        {
+          scopeKey: "00000000-0000-4000-8000-000000000004",
+          quantity: 1.25,
+          quantityUnit: QuoteQuantityUnit.HOUR,
+          unitPrice: 1001,
+          lineTotal: 1251,
+        },
+      ],
     });
     expect(() => JSON.stringify({ data: view })).not.toThrow();
   });
