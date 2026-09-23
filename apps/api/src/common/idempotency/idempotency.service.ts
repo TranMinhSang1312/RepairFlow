@@ -17,6 +17,7 @@ interface ExecuteIdempotentlyOptions<TResponse> {
   request: unknown;
   responseStatus?: number;
   recordExpiresAt?: (response: TResponse) => Date;
+  onReplay?: (transaction: Prisma.TransactionClient) => Promise<void>;
   operation: (transaction: Prisma.TransactionClient) => Promise<TResponse>;
 }
 
@@ -78,6 +79,7 @@ export class IdempotencyService {
 
         if (existing && existing.expiresAt > new Date()) {
           this.assertSameRequest(existing.requestHash, requestHash);
+          await options.onReplay?.(transaction);
           return existing.responseBody as TStored;
         }
         if (existing) {

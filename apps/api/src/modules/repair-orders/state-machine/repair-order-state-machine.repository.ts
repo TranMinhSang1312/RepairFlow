@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs PrismaService at runtime for DI. */
 
 import { Injectable } from "@nestjs/common";
-import { MediaPurpose, Prisma, QuoteStatus, type RepairOrderStatus } from "@prisma/client";
+import { MediaPurpose, Prisma, QuoteStatus, RepairOrderStatus } from "@prisma/client";
 
 import { PrismaService } from "../../../infra/database/prisma.service.js";
 import type {
@@ -32,10 +32,24 @@ const transitionOrderInclude = {
     select: { id: true },
   },
   quoteVersions: {
-    where: { status: QuoteStatus.SENT },
-    orderBy: [{ sentAt: "desc" as const }, { id: "desc" as const }],
+    where: {
+      status: {
+        in: [
+          QuoteStatus.SENT,
+          QuoteStatus.ACCEPTED,
+          QuoteStatus.PARTIALLY_ACCEPTED,
+          QuoteStatus.DECLINED,
+        ],
+      },
+    },
+    orderBy: [{ versionNo: "desc" as const }, { id: "desc" as const }],
     take: 1,
-    select: { id: true, items: { take: 1, select: { id: true } } },
+    select: {
+      id: true,
+      status: true,
+      items: { take: 1, select: { id: true } },
+      approval: { select: { decision: true } },
+    },
   },
   _count: { select: { quoteVersions: true, payments: true, workLogs: true } },
 } satisfies Prisma.RepairOrderInclude;
@@ -80,6 +94,9 @@ export class RepairOrderStateMachineRepository {
       data: {
         status: command.targetStatus,
         completionOutcome: command.completionOutcome ?? null,
+        ...(command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP
+          ? { readyAt: new Date() }
+          : {}),
         lockVersion: { increment: 1 },
       },
     });

@@ -1,5 +1,6 @@
 import {
   HttpStatus,
+  RequestMethod,
   ValidationPipe,
   type INestApplication,
   type ValidationError,
@@ -25,7 +26,9 @@ function validationDetails(errors: ValidationError[], parent = ""): ErrorDetail[
 
 export function configureApplication(app: INestApplication): INestApplication {
   app.useLogger(app.get(Logger));
-  app.setGlobalPrefix("api/v1");
+  app.setGlobalPrefix("api/v1", {
+    exclude: [{ path: "public/v1/{*path}", method: RequestMethod.ALL }],
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
