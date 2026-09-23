@@ -14,6 +14,7 @@ export const Capability = {
   DIAGNOSIS_CREATE: "DIAGNOSIS_CREATE",
   QUOTE_DRAFT_WRITE: "QUOTE_DRAFT_WRITE",
   QUOTE_SEND: "QUOTE_SEND",
+  SERVICE_EXECUTION_WRITE: "SERVICE_EXECUTION_WRITE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
@@ -41,5 +42,6 @@ export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capa
     Capability.REPAIR_ORDER_READ_ASSIGNED,
     Capability.REPAIR_ORDER_TRANSITION,
     Capability.DIAGNOSIS_CREATE,
+    Capability.SERVICE_EXECUTION_WRITE,
   ]),
 };

@@ -4,8 +4,11 @@ import type {
   Customer,
   Device,
   MediaPurpose,
+  PartRequirement,
+  PartUsed,
   Prisma,
   Priority,
+  QuoteDecision,
   RepairOrderStatus,
 } from "@prisma/client";
 
@@ -18,6 +21,17 @@ import {
 } from "./assignments/assignment.types.js";
 import { toDiagnosisView, type DiagnosisView } from "../diagnoses/diagnosis.types.js";
 import { toQuoteView, type QuoteRecord, type QuoteView } from "../quotes/quote.types.js";
+import {
+  parseApprovedScope,
+  toPartRequirementView,
+  toPartUsedViews,
+  toWorkLogViews,
+  type ApprovedScopeSummary,
+  type PartRequirementView,
+  type PartUsedView,
+  type WorkLogRecord,
+  type WorkLogView,
+} from "../service-execution/service-execution.types.js";
 
 export interface RepairOrderView {
   id: string;
@@ -78,6 +92,10 @@ export interface RepairOrderDetailView extends RepairOrderView {
   activeAssignment: AssignmentView | null;
   diagnoses: DiagnosisView[];
   quoteVersions: QuoteView[];
+  approvedScope: ApprovedScopeSummary | null;
+  workLogs: WorkLogView[];
+  partRequirements: PartRequirementView[];
+  partsUsed: PartUsedView[];
   timeline: OrderEventView[];
 }
 
@@ -188,9 +206,27 @@ export function toRepairOrderDetailView(
       createdAt: Date;
     }>;
     diagnoses: Parameters<typeof toDiagnosisView>[0][];
-    quoteVersions: QuoteRecord[];
+    quoteVersions: Array<
+      QuoteRecord & {
+        approval: {
+          decision: QuoteDecision;
+          approvedItemSnapshot: Prisma.JsonValue;
+          approvedTotal: bigint;
+          decidedAt: Date;
+        } | null;
+      }
+    >;
+    workLogs: WorkLogRecord[];
+    partRequirements: PartRequirement[];
+    partsUsed: PartUsed[];
   },
 ): RepairOrderDetailView {
+  const binding = [...order.quoteVersions]
+    .reverse()
+    .find(
+      (quote) =>
+        quote.approval && (quote.status === "ACCEPTED" || quote.status === "PARTIALLY_ACCEPTED"),
+    );
   return {
     ...toRepairOrderView(order),
     accessories: order.accessories,
@@ -201,6 +237,10 @@ export function toRepairOrderDetailView(
     activeAssignment: order.assignments?.[0] ? toAssignmentView(order.assignments[0]) : null,
     diagnoses: order.diagnoses.map(toDiagnosisView),
     quoteVersions: order.quoteVersions.map(toQuoteView),
+    approvedScope: parseApprovedScope(binding),
+    workLogs: toWorkLogViews(order.workLogs),
+    partRequirements: order.partRequirements.map(toPartRequirementView),
+    partsUsed: toPartUsedViews(order.partsUsed),
     timeline: order.events.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),
