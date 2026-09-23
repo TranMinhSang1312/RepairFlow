@@ -12,6 +12,7 @@ Status: proposed specification for `spec-v0.1`
 - **Completion outcome:** reason the device became ready for return.
 - **Timeline event:** append-only business event used for traceability and customer-safe progress.
 - **Audit log:** staff/security change record that is never exposed to customers.
+- **Canonical text key:** Unicode NFKC normalization, trim, collapse every whitespace run to one ASCII space, then locale-independent lowercase. Accents remain significant. Quote lineage uses this for description comparison; QC template families use it for `normalizedName`.
 
 ## Tenant rules
 
@@ -63,7 +64,7 @@ Status: proposed specification for `spec-v0.1`
 | `RECEIVED` | `DIAGNOSING` | Intake condition is present; required intake photos exist; an active technician is assigned. |
 | `RECEIVED` | `VOIDED` | Record is erroneous, no real device custody exists, and no quote/payment/work log exists. Owner only. |
 | `DIAGNOSING` | `AWAITING_APPROVAL` | A current quote version is `SENT` and has at least one item. |
-| `DIAGNOSING` | `READY_FOR_PICKUP` | Outcome is `UNREPAIRABLE` or `NO_FAULT_FOUND`; a diagnosis exists. |
+| `DIAGNOSING` | `READY_FOR_PICKUP` | Owner/receptionist only. `UNREPAIRABLE` or `NO_FAULT_FOUND` requires a tenant/order-bound diagnosis. `CUSTOMER_CANCELLED` requires a non-blank cancellation note and no sent/accepted/partially-accepted quote, payment, technical `REPAIR`/`TEST` log, or used part. |
 | `AWAITING_APPROVAL` | `APPROVED` | Current quote is `ACCEPTED` or validly `PARTIALLY_ACCEPTED`; all required approval groups are satisfied. |
 | `AWAITING_APPROVAL` | `DIAGNOSING` | Customer requests another option or staff supersedes the quote. |
 | `AWAITING_APPROVAL` | `READY_FOR_PICKUP` | Quote is `DECLINED`; outcome is `DECLINED_QUOTE`. |
@@ -71,7 +72,7 @@ Status: proposed specification for `spec-v0.1`
 | `APPROVED` | `REPAIRING` | Active technician is assigned and approved scope exists. |
 | `WAITING_PARTS` | `REPAIRING` | Required parts are marked available. |
 | `REPAIRING` | `AWAITING_APPROVAL` | A new quote version with changed scope or price is sent. Work outside prior approval has not started. |
-| `REPAIRING` | `QUALITY_CHECK` | Work logs exist for every required approved repair group. |
+| `REPAIRING` | `QUALITY_CHECK` | Effective work evidence exists for every actionable approved `SERVICE` or `PART` item. |
 | `QUALITY_CHECK` | `REPAIRING` | Latest QC run failed. Failure notes are recorded. |
 | `QUALITY_CHECK` | `READY_FOR_PICKUP` | Latest QC run passed; outcome is `REPAIRED`. |
 | `READY_FOR_PICKUP` | `COMPLETED` | Handover recipient, staff actor, timestamp, and payment disposition are recorded. |
@@ -130,42 +131,57 @@ No generic endpoint may patch the `status` field.
 
 ## Work and parts rules
 
-1. Work can begin only for approved quote scope unless the recorded item is explicitly no-charge and authorized.
-2. Work logs are append-only and identify their author and time.
-3. Corrections use a new log with `supersedesId`.
-4. Parts used are snapshots of name, SKU, quantity, cost, and sale price. MVP does not promise real-time inventory.
-5. New scope or cost requires a new quote before work begins on that scope.
+1. The only authoritative approved scope is the latest binding `QuoteApproval.approvedItemSnapshot`. The server never reconstructs it from all quote items. No-charge work is represented by an accepted zero-price item.
+2. Every quote item has a server-owned `scopeKey`. A full-replacement quote may carry a prior same-order key only when kind, normalized description, quantity/unit, approval group, and required/optional classification are unchanged. Price and non-binding `displayNote` may change. Invalid ancestry returns `QUOTE_SCOPE_LINEAGE_INVALID`, changes nothing, and produces a redacted audit entry; accepted lineage is audited too.
+3. Work logs, requirements, and used parts bind to current approved lineage. `REPAIR` and `TEST` require an actionable approved item; operational notes are unlinked. A correction inherits the root semantic type and scope, may supersede only the effective leaf, and forms one immutable linear chain. Only the latest descendant is effective.
+4. Part availability uses `PartRequirement`: `NEEDED -> ORDERED|AVAILABLE` and `ORDERED -> AVAILABLE` are staff actions. `AVAILABLE` is terminal. `CANCELLED` is terminal and system-only when a replacement approval removes that lineage.
+5. `PartUsed` is append-only. Every API-created snapshot has both approved `quoteItemId` and `scopeKey`; nullable bindings exist only to preserve any pre-RF-040 database rows and those legacy rows never satisfy current coverage. A correction replaces the prior effective quantity for cumulative checks. Effective cumulative quantity cannot exceed the approved `PART` quantity; quantities are positive and prices are non-negative integer VND. MVP has no inventory ledger.
+6. Changed scope, quantity, or sale price requires a replacement quote and binding decision before execution resumes.
+
+### Execution command/state matrix
+
+| Command | Allowed order states | Additional guard |
+|---|---|---|
+| Append/correct `REPAIR` or `TEST` | `REPAIRING` | Current approved actionable scope and technical authorization; correction targets effective leaf. |
+| Append/correct `CUSTOMER_CONTACT` or `INTERNAL_NOTE` | `APPROVED`, `WAITING_PARTS`, `REPAIRING`, `QUALITY_CHECK`, `READY_FOR_PICKUP` | Operational only; never satisfies work coverage. |
+| Create/update part requirement | `APPROVED`, `WAITING_PARTS`, `REPAIRING` | Current approved `PART` lineage; clients cannot set `CANCELLED`. |
+| Append/correct used part | `REPAIRING` | Current approved `PART` lineage and effective quantity within approval. |
+
+No execution write is accepted in `AWAITING_APPROVAL`, `RECEIVED`, `DIAGNOSING`, `COMPLETED`, or `VOIDED`. Every approved actionable `SERVICE` or `PART` item needs effective technical work evidence before `REPAIRING -> QUALITY_CHECK`.
 
 ## Quality-control rules
 
-1. A QC run records the version of its template and every required result.
-2. A run is `PASS` only if all required items pass.
-3. Failed QC returns the order to `REPAIRING` with failure notes.
-4. Outcome `REPAIRED` cannot reach `READY_FOR_PICKUP` without a latest passing QC run.
-5. QC history is append-only.
+1. Template names have a canonical normalized family key. At most one version in a shop/family is active. Published versions/items are immutable; update creates the next version and deactivates the prior version atomically.
+2. A run binds one active immutable template and contains every template item exactly once. `NOT_APPLICABLE` is valid only when the item permits it. Any failed item derives a failed run and requires a non-blank run note.
+3. Every accepted submission allocates the next per-order `runNo` under the order lock and increments order `lockVersion`, including a pass that leaves status unchanged.
+4. Failed QC persists the complete run and atomically returns the order to `REPAIRING`. A passed run leaves it in `QUALITY_CHECK`; a separate authorized transition sets `READY_FOR_PICKUP` and `REPAIRED`.
+5. Latest QC is determined by `runNo`, not timestamp or UUID. Runs, results, and verified tenant/order-bound evidence are append-only.
 
 ## Payment and handover rules
 
-1. Payment records are operational receipts, not an accounting ledger or tax invoice.
-2. Payment amount must be positive and created idempotently.
-3. A handover records recipient name, staff actor, time, payment disposition, and optional signature media.
-4. `COMPLETED` means physical custody ended. Declining a quote does not complete an order.
-5. Completing handover revokes active customer approval tokens and any temporary device credential if a future version supports one.
+1. Payment records are idempotent operational receipts, not an accounting ledger or tax invoice. The server derives `approvedTotal`, `paidTotal`, and `amountDue=max(0, approvedTotal-paidTotal)`; payments must be positive and not exceed due.
+2. A standalone payment requires a binding approval and is allowed in `READY_FOR_PICKUP`, or in `COMPLETED` only after `PARTIALLY_PAID`/`PAY_LATER` handover while due remains. `PAID`/`WAIVED` handovers and all other states reject payment.
+3. A valid non-repaired order without binding approval is zero/zero/zero and cannot receive payment. `PAID` requires zero due; `PARTIALLY_PAID` requires paid and due both positive; `WAIVED` and `PAY_LATER` require a note when due remains.
+4. Handover is idempotent and allowed only from `READY_FOR_PICKUP` with `expectedLockVersion`. It atomically creates optional final payment, handover, repaired warranty, completion event/status, token mutations, domain-only outbox, and retained idempotency result.
+5. A repaired handover requires warranty. The server sets `startsAt=handedOverAt`; the request supplies a later `endsAt` and non-blank terms. Non-repaired outcomes cannot create warranty.
+6. The server validates signature media tenant, order, `SIGNATURE` purpose, completed upload, and expiry. Public payloads never contain signature/object metadata.
+7. Completion revokes every active `DECIDE_QUOTE` and older `TRACK_ORDER` token and creates one TRACK token. Expiry is `max(handover+365 days, warranty end+30 days)` when repaired, otherwise `handover+365 days`.
+8. Same-key/same-payload replay before expiry derives the same raw URL without storing it. Replay after expiry returns `TOKEN_EXPIRED` and never mints another token. Raw tokens are absent from database, logs, events, outbox, and persisted idempotency bodies.
+9. The handover outbox payload contains domain identifiers only. Provider, channel, destination, and delivery retry are deferred to Milestone 6.
 
 ## Warranty rules
 
-1. Warranty terms are snapshotted at handover.
-2. A warranty has start and end timestamps and explicit text terms.
-3. A return under warranty creates a new repair order with `serviceType=WARRANTY` and `sourceOrderId` referencing the original.
-4. The original order remains immutable and completed.
-5. Warranty eligibility is confirmed by authorized staff; AI cannot approve or reject it.
+1. Warranty terms are immutable handover snapshots with server start, later end, and explicit text.
+2. An idempotent warranty follow-up requires a same-tenant `COMPLETED` source covered at request time and explicit owner/receptionist confirmation. AI cannot approve eligibility.
+3. The server creates a new `RECEIVED` order with a server code, `serviceType=WARRANTY`, `sourceOrderId`, exact copied source customer/device snapshots, and fresh intake fields/evidence. Archived live customer/device profiles remain eligible when they belong to the same shop.
+4. The source order and all source-owned rows/events remain byte-for-byte unchanged. The relation and `warranty_case.opened` event are written only on the child.
 
 ## Public portal rules
 
 1. Public tokens are high-entropy random values; only their hashes are stored.
 2. Token scopes are `TRACK_ORDER` or `DECIDE_QUOTE`.
-3. The portal exposes customer-safe status, order code, device display label, public timeline messages, current quote, and warranty summary.
-4. It never exposes internal notes, cost price, staff email, audit logs, AI prompts, provider responses, or other customers.
+3. The portal exposes only allowlisted shop display/contact, order code/status/outcome, device display label, ready/returned timestamps, public timeline, the token-bound quote when applicable, customer-facing warranty dates/terms/status, and safe linked-order progress.
+4. It never exposes payments, costs, staff identity, signature metadata, customer contacts, internal notes, object keys, source UUIDs, audit logs, AI prompts, provider responses, or other customers.
 5. Token usage updates `lastUsedAt` but does not extend expiry automatically.
 6. Quote-decision tokens bind to exactly one quote version.
 

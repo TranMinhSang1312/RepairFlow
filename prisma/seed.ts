@@ -41,16 +41,20 @@ async function seed(): Promise<void> {
 
   await prisma.qcTemplate.upsert({
     where: {
-      shopId_name_versionNo: {
+      shopId_normalizedName_versionNo: {
         shopId: shop.id,
-        name: "Kiểm tra thiết bị cơ bản",
+        normalizedName: "kiểm tra thiết bị cơ bản",
         versionNo: 1,
       },
     },
-    update: {},
+    update: {
+      name: "Kiểm tra thiết bị cơ bản",
+      isActive: true,
+    },
     create: {
       shopId: shop.id,
       name: "Kiểm tra thiết bị cơ bản",
+      normalizedName: "kiểm tra thiết bị cơ bản",
       versionNo: 1,
       items: {
         create: [

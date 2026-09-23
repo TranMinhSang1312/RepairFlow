@@ -122,7 +122,7 @@ Show the current workload and next actions.
 
 - Diagnosis reference.
 - Item type: service, part, fee.
-- Description, quantity, unit price.
+- Description, non-binding display note, quantity, unit, and unit price.
 - Required/optional indicator and approval group.
 - Discount in VND.
 - Expiry date/time.
@@ -138,6 +138,7 @@ Show the current workload and next actions.
 - Shows version number, items, total, expiry, destination, and warning that the version becomes immutable.
 - Successful send shows copy-link action even when notification provider is unavailable.
 - Editing a sent quote starts a new draft version.
+- A full-replacement draft may explicitly carry a prior item. The UI sends the prior item ID, never a scope key, and explains a rejected lineage without losing the draft.
 
 ## S06 — Customer quote and tracking portal
 
@@ -171,11 +172,12 @@ Assigned technician and owner.
 
 ### Content/actions
 
-- Approved quote scope displayed read-only.
-- Add timestamped work-log entry.
-- Link work to an approved quote item where applicable.
-- Record part snapshot: name, SKU, quantity, cost, sale price.
-- Mark part availability and request `WAITING_PARTS` transition.
+- Approved snapshot scope displayed read-only with item, quantity/unit, and evidence coverage.
+- Add timestamped repair/test work only while repairing; add customer-contact/internal notes in the documented operational states.
+- Link technical work to an actionable approved item. Corrections target the current effective leaf and display earlier history as superseded.
+- Record immutable used-part snapshots and corrections against an approved part; show cumulative effective quantity versus approval.
+- Create part requirements and advance `NEEDED -> ORDERED|AVAILABLE` or `ORDERED -> AVAILABLE`. `CANCELLED` is read-only system history.
+- Mark availability and request `WAITING_PARTS`/`REPAIRING` transitions when guards permit.
 - Start new quote flow when scope or price changes.
 
 Work logs cannot be edited in place. Correction creates a superseding entry.
@@ -184,13 +186,14 @@ Work logs cannot be edited in place. Correction creates a superseding entry.
 
 ### Content
 
-- Template/version name.
+- Active immutable template/version name and per-order run number.
 - Required checklist items with pass/fail/not-applicable where permitted.
 - Notes and optional evidence photo.
 
 ### Submission
 
-- Server derives overall result.
+- Owner settings can list template history, create the next version, and deactivate an active family; published checklist items cannot be edited in place.
+- Submission includes `expectedLockVersion`; server derives overall result and advances the order version even when a passing run leaves the status unchanged.
 - Failed result requires failure notes and returns the order to repair.
 - Passed result enables the ready-for-pickup transition with outcome `REPAIRED`.
 
@@ -199,17 +202,19 @@ Work logs cannot be edited in place. Correction creates a superseding entry.
 ### Fields
 
 - Completion outcome, read-only from workflow.
-- Amount due and previously recorded payments.
+- Authoritative approved total, paid total, amount due, and previously recorded payments.
 - Add payment: amount, method, reference.
 - Payment disposition: paid, partially paid, waived, or pay-later note.
 - Recipient name, required.
 - Optional signature/photo.
-- Warranty start, end, and terms for repaired outcomes.
+- Warranty end and terms for repaired outcomes; start is read-only and server-set to handover time.
 
 ### Completion
 
 - Confirmation explains that physical custody will end and the order becomes terminal.
-- Server records handover, revokes active decision links, creates warranty, and transitions to `COMPLETED` in one transaction.
+- Server records optional final payment, handover, repaired warranty, token revocation/new tracking link, completion, timeline, and domain outbox in one transaction.
+- Replaying the same completion shows the same tracking URL until its expiry; an expired replay is terminal and asks staff to use a later separately contracted recovery flow.
+- Owner/receptionist can open a warranty follow-up from an eligible completed order. The form confirms eligibility and captures fresh problem/condition, branch, accessories, and intake media; archived source profiles remain selectable through the immutable source snapshot.
 
 ## S10 — Shop and staff settings
 
