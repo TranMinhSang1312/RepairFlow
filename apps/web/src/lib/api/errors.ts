@@ -19,6 +19,16 @@ const SAFE_MESSAGES: Readonly<Record<string, string>> = {
   VALIDATION_FAILED: "Một số thông tin chưa hợp lệ. Hãy kiểm tra các trường được đánh dấu.",
   RATE_LIMITED: "Bạn thao tác quá nhanh. Vui lòng chờ rồi thử lại.",
   EMAIL_ALREADY_REGISTERED: "Email này đã được đăng ký.",
+  QUOTE_NOT_DRAFT: "Chỉ bản nháp báo giá mới có thể chỉnh sửa hoặc gửi.",
+  QUOTE_IMMUTABLE: "Báo giá đã gửi hoặc đã chốt nên không thể thay đổi.",
+  QUOTE_SUPERSEDED: "Báo giá này đã được thay thế bằng một phiên bản mới hơn.",
+  QUOTE_ALREADY_DECIDED: "Khách hàng đã gửi quyết định cho báo giá này.",
+  QUOTE_ITEMS_REQUIRED: "Báo giá phải có ít nhất một hạng mục.",
+  QUOTE_APPROVAL_GROUP_INVALID: "Các hạng mục trong cùng nhóm phải được chọn cùng nhau.",
+  QUOTE_DESTINATION_REQUIRED: "Kênh gửi đã chọn chưa có thông tin liên hệ phù hợp của khách hàng.",
+  PUBLIC_LINK_INVALID: "Liên kết không hợp lệ hoặc không còn hoạt động.",
+  PUBLIC_LINK_EXPIRED: "Liên kết này đã hết hạn.",
+  PUBLIC_QUOTE_UNAVAILABLE: "Báo giá này đã hết hạn hoặc được thay thế.",
   NETWORK_RESPONSE_INVALID: "Máy chủ trả về phản hồi không hợp lệ. Hãy thử lại.",
 };
 
