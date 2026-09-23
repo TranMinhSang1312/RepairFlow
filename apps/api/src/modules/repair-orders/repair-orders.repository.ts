@@ -107,7 +107,18 @@ const repairOrderDetailInclude = {
     orderBy: [{ versionNo: "asc" as const }, { id: "asc" as const }],
     include: {
       items: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
+      approval: true,
     },
+  },
+  workLogs: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+    include: { quoteItem: { select: { scopeKey: true } } },
+  },
+  partRequirements: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+  },
+  partsUsed: {
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
   },
 } satisfies Prisma.RepairOrderInclude;
 

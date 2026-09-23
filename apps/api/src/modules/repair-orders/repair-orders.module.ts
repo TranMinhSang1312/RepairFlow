@@ -6,6 +6,7 @@ import { DiagnosesController } from "../diagnoses/diagnoses.controller.js";
 import { DiagnosesRepository } from "../diagnoses/diagnoses.repository.js";
 import { DiagnosesService } from "../diagnoses/diagnoses.service.js";
 import { QuotesModule } from "../quotes/quotes.module.js";
+import { ServiceExecutionModule } from "../service-execution/service-execution.module.js";
 import { AssignmentsController } from "./assignments/assignments.controller.js";
 import { AssignmentsRepository } from "./assignments/assignments.repository.js";
 import { AssignmentsService } from "./assignments/assignments.service.js";
@@ -15,7 +16,13 @@ import { RepairOrdersService } from "./repair-orders.service.js";
 import { RepairOrderStateMachineModule } from "./state-machine/repair-order-state-machine.module.js";
 
 @Module({
-  imports: [IdempotencyModule, MediaModule, RepairOrderStateMachineModule, QuotesModule],
+  imports: [
+    IdempotencyModule,
+    MediaModule,
+    RepairOrderStateMachineModule,
+    QuotesModule,
+    ServiceExecutionModule,
+  ],
   controllers: [RepairOrdersController, AssignmentsController, DiagnosesController],
   providers: [
     RepairOrdersRepository,
