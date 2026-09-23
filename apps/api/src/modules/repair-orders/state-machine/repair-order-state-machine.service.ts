@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs constructor tokens at runtime for DI. */
 
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { ActorType, MembershipRole, RepairOrderStatus } from "@prisma/client";
+import {
+  ActorType,
+  CompletionOutcome,
+  MembershipRole,
+  QuoteDecision,
+  QuoteStatus,
+  RepairOrderStatus,
+} from "@prisma/client";
 
 import { ApiException } from "../../../common/api-exception.js";
 import { IdempotencyService } from "../../../common/idempotency/idempotency.service.js";
@@ -86,7 +93,7 @@ export class RepairOrderStateMachineService {
     }
 
     this.assertAllowedEdge(order.status, command.targetStatus);
-    this.assertPermission(order.status, command.targetStatus, command.actor.role);
+    this.assertPermission(order.status, command.targetStatus, command.actor);
     this.assertCompletionOutcome(command);
     this.assertGuards(order, command.targetStatus);
 
@@ -134,19 +141,22 @@ export class RepairOrderStateMachineService {
   private assertPermission(
     from: RepairOrderStatus,
     to: RepairOrderStatus,
-    role: MembershipRole | null,
+    actor: RepairOrderTransitionCommand["actor"],
   ): void {
     const permitted =
-      role === MembershipRole.OWNER ||
+      actor.role === MembershipRole.OWNER ||
       (from === RepairOrderStatus.RECEIVED &&
         to === RepairOrderStatus.DIAGNOSING &&
-        role === MembershipRole.TECHNICIAN) ||
+        actor.role === MembershipRole.TECHNICIAN) ||
       (from === RepairOrderStatus.AWAITING_APPROVAL &&
         to === RepairOrderStatus.DIAGNOSING &&
-        role === MembershipRole.RECEPTIONIST) ||
+        actor.role === MembershipRole.RECEPTIONIST) ||
       ((from === RepairOrderStatus.DIAGNOSING || from === RepairOrderStatus.REPAIRING) &&
         to === RepairOrderStatus.AWAITING_APPROVAL &&
-        role === MembershipRole.RECEPTIONIST);
+        actor.role === MembershipRole.RECEPTIONIST) ||
+      (actor.type === ActorType.CUSTOMER_TOKEN &&
+        from === RepairOrderStatus.AWAITING_APPROVAL &&
+        (to === RepairOrderStatus.APPROVED || to === RepairOrderStatus.READY_FOR_PICKUP));
     if (!permitted) {
       throw new ApiException(
         HttpStatus.FORBIDDEN,
@@ -157,7 +167,23 @@ export class RepairOrderStateMachineService {
   }
 
   private assertCompletionOutcome(command: RepairOrderTransitionCommand): void {
+    if (
+      command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP &&
+      command.completionOutcome !== CompletionOutcome.DECLINED_QUOTE
+    ) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        "COMPLETION_OUTCOME_REQUIRED",
+        "Declining a quote requires the DECLINED_QUOTE completion outcome.",
+      );
+    }
     if (command.completionOutcome !== null && command.completionOutcome !== undefined) {
+      if (
+        command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP &&
+        command.completionOutcome === CompletionOutcome.DECLINED_QUOTE
+      ) {
+        return;
+      }
       throw new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         "VALIDATION_FAILED",
@@ -209,9 +235,34 @@ export class RepairOrderStateMachineService {
       (order.status === RepairOrderStatus.DIAGNOSING ||
         order.status === RepairOrderStatus.REPAIRING) &&
       targetStatus === RepairOrderStatus.AWAITING_APPROVAL &&
-      (!order.quoteVersions[0] || order.quoteVersions[0].items.length === 0)
+      (!order.quoteVersions[0] ||
+        order.quoteVersions[0].status !== QuoteStatus.SENT ||
+        order.quoteVersions[0].items.length === 0)
     ) {
       throw this.guardFailed("A sent quote with at least one item is required for approval.");
+    }
+
+    const currentQuote = order.quoteVersions[0];
+    if (
+      order.status === RepairOrderStatus.AWAITING_APPROVAL &&
+      targetStatus === RepairOrderStatus.APPROVED &&
+      (!currentQuote ||
+        (currentQuote.status !== QuoteStatus.ACCEPTED &&
+          currentQuote.status !== QuoteStatus.PARTIALLY_ACCEPTED) ||
+        !currentQuote.approval ||
+        (currentQuote.approval.decision !== QuoteDecision.ACCEPTED &&
+          currentQuote.approval.decision !== QuoteDecision.PARTIALLY_ACCEPTED))
+    ) {
+      throw this.guardFailed("An accepted current quote is required before repair approval.");
+    }
+    if (
+      order.status === RepairOrderStatus.AWAITING_APPROVAL &&
+      targetStatus === RepairOrderStatus.READY_FOR_PICKUP &&
+      (!currentQuote ||
+        currentQuote.status !== QuoteStatus.DECLINED ||
+        currentQuote.approval?.decision !== QuoteDecision.DECLINED)
+    ) {
+      throw this.guardFailed("A declined current quote is required before pickup.");
     }
   }
 

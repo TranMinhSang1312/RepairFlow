@@ -9,6 +9,8 @@ const supported = new Set([
   `${RepairOrderStatus.AWAITING_APPROVAL}:${RepairOrderStatus.DIAGNOSING}`,
   `${RepairOrderStatus.DIAGNOSING}:${RepairOrderStatus.AWAITING_APPROVAL}`,
   `${RepairOrderStatus.REPAIRING}:${RepairOrderStatus.AWAITING_APPROVAL}`,
+  `${RepairOrderStatus.AWAITING_APPROVAL}:${RepairOrderStatus.APPROVED}`,
+  `${RepairOrderStatus.AWAITING_APPROVAL}:${RepairOrderStatus.READY_FOR_PICKUP}`,
 ]);
 
 describe("RF-032 transition graph", () => {

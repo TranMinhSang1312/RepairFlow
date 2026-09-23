@@ -42,8 +42,24 @@ export class PublicTokenService {
     return createHash("sha256").update(rawToken).digest("hex");
   }
 
+  requestFingerprint(ip: string, userAgent: string): string {
+    return this.privateHash("public-actor", `${ip}\u0000${userAgent}`);
+  }
+
+  rateLimitKey(rawToken: string, ip: string): string {
+    return this.privateHash("public-rate-limit", `${rawToken}\u0000${ip}`);
+  }
+
+  idempotencyKeyHash(key: string): string {
+    return this.privateHash("public-idempotency", key);
+  }
+
   publicUrl(metadata: QuoteTokenMetadata): string {
     const rawToken = this.deriveRawToken(metadata);
     return new URL(`/p/${encodeURIComponent(rawToken)}`, this.publicWebUrl).toString();
+  }
+
+  private privateHash(purpose: string, value: string): string {
+    return createHmac("sha256", this.secret).update(`${purpose}:v1:${value}`).digest("hex");
   }
 }
