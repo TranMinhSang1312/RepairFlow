@@ -17,6 +17,10 @@ import type {
   Assignment,
   CreateDiagnosisInput,
   Diagnosis,
+  CreateQuoteInput,
+  Quote,
+  QuoteSendChannel,
+  SendQuoteResult,
   RepairOrderStatus,
   RepairOrderSummary,
 } from "./types";
@@ -79,6 +83,18 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
     repairOrderId: string,
     input: CreateDiagnosisInput,
   ): Promise<Diagnosis>;
+  createQuote(shopId: string, repairOrderId: string, input: CreateQuoteInput): Promise<Quote>;
+  replaceDraftQuote(
+    shopId: string,
+    quoteVersionId: string,
+    input: CreateQuoteInput,
+  ): Promise<Quote>;
+  sendQuote(
+    shopId: string,
+    quoteVersionId: string,
+    channel: QuoteSendChannel,
+    idempotencyKey: string,
+  ): Promise<SendQuoteResult>;
 }
 
 export interface AuthApi {
@@ -334,6 +350,43 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
     const response = await this.request<DataResponse<Diagnosis>>(
       `/repair-orders/${encodeURIComponent(repairOrderId)}/diagnoses`,
       { method: "POST", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async createQuote(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateQuoteInput,
+  ): Promise<Quote> {
+    const response = await this.request<DataResponse<Quote>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/quotes`,
+      { method: "POST", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async replaceDraftQuote(
+    shopId: string,
+    quoteVersionId: string,
+    input: CreateQuoteInput,
+  ): Promise<Quote> {
+    const response = await this.request<DataResponse<Quote>>(
+      `/quotes/${encodeURIComponent(quoteVersionId)}`,
+      { method: "PATCH", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async sendQuote(
+    shopId: string,
+    quoteVersionId: string,
+    channel: QuoteSendChannel,
+    idempotencyKey: string,
+  ): Promise<SendQuoteResult> {
+    const response = await this.request<DataResponse<SendQuoteResult>>(
+      `/quotes/${encodeURIComponent(quoteVersionId)}/send`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify({ channel }) },
     );
     return response.data;
   }

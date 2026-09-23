@@ -83,6 +83,7 @@ const detail: RepairOrderDetail = {
   ],
   activeAssignment: null,
   diagnoses: [],
+  quoteVersions: [],
   timeline: [
     {
       id: "e1",
@@ -107,6 +108,9 @@ function fakeApi(overrides: Partial<RepairOrderWorkspaceApi> = {}): RepairOrderW
     assignTechnician: vi.fn(),
     transitionRepairOrder: vi.fn(),
     createDiagnosis: vi.fn(),
+    createQuote: vi.fn(),
+    replaceDraftQuote: vi.fn(),
+    sendQuote: vi.fn(),
     ...overrides,
   };
 }
@@ -224,6 +228,24 @@ describe("RepairOrderWorkspaceScreen", () => {
     await user.click(screen.getByRole("tab", { name: /Chẩn đoán/ }));
     expect(screen.getByText("Chưa có chẩn đoán nào được xuất bản.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Xuất bản chẩn đoán" })).toBeNull();
+  });
+
+  it("opens the quote workspace for an authorized receptionist", async () => {
+    const user = userEvent.setup();
+    render(
+      <RepairOrderWorkspaceScreen
+        api={fakeApi({
+          getRepairOrder: vi.fn().mockResolvedValue({ ...detail, status: "DIAGNOSING" }),
+        })}
+        repairOrderId={orderId}
+        search={`shopId=${shopId}`}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "RFD-2609-00001" });
+    await user.click(screen.getByRole("tab", { name: /Báo giá/ }));
+    expect(screen.getByRole("heading", { name: "Chuẩn bị báo giá" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "0 phiên bản báo giá" })).toBeTruthy();
   });
 
   it("keeps the workspace visible when assignment fails", async () => {

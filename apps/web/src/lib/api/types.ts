@@ -204,12 +204,130 @@ export interface CreateDiagnosisInput {
   supersedesId?: string | null;
 }
 
+export type QuoteItemKind = "SERVICE" | "PART" | "FEE";
+
+export type QuoteStatus =
+  "DRAFT" | "SENT" | "ACCEPTED" | "PARTIALLY_ACCEPTED" | "DECLINED" | "EXPIRED" | "SUPERSEDED";
+
+export interface QuoteItem {
+  id: string;
+  kind: QuoteItemKind;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  isOptional: boolean;
+  approvalGroup: string | null;
+}
+
+export interface Quote {
+  id: string;
+  repairOrderId: string;
+  diagnosisId: string | null;
+  versionNo: number;
+  status: QuoteStatus;
+  currency: "VND";
+  items: QuoteItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  customerNote: string | null;
+  expiresAt: string | null;
+  sentAt: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateQuoteItemInput {
+  kind: QuoteItemKind;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  isOptional: boolean;
+  approvalGroup?: string | null;
+}
+
+export interface CreateQuoteInput {
+  diagnosisId?: string | null;
+  discount?: number;
+  customerNote?: string | null;
+  expiresAt?: string | null;
+  items: CreateQuoteItemInput[];
+}
+
+export type QuoteSendChannel = "EMAIL" | "ZALO" | "SMS" | "COPY_LINK";
+
+export interface SendQuoteResult {
+  quote: Quote;
+  publicUrl: string;
+}
+
 export interface RepairOrderDetail extends RepairOrderSummary {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
   activeAssignment: Assignment | null;
   diagnoses: Diagnosis[];
+  quoteVersions: Quote[];
   timeline: RepairOrderTimelineEvent[];
+}
+
+export type QuoteDecision = "ACCEPTED" | "PARTIALLY_ACCEPTED" | "DECLINED";
+
+export interface PublicQuoteItem {
+  id: string;
+  kind: QuoteItemKind;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  isOptional: boolean;
+  approvalGroup: string | null;
+}
+
+export interface PublicQuote {
+  id: string;
+  versionNo: number;
+  status: Exclude<QuoteStatus, "DRAFT" | "EXPIRED" | "SUPERSEDED">;
+  currency: "VND";
+  items: PublicQuoteItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  customerNote: string | null;
+  expiresAt: string;
+  sentAt: string;
+  decidedAt: string | null;
+}
+
+export interface PublicTimelineEvent {
+  type: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface PublicOrder {
+  shopName: string;
+  shopContact: string | null;
+  orderCode: string;
+  deviceLabel: string;
+  status: RepairOrderStatus;
+  completionOutcome: CompletionOutcome | null;
+  timeline: PublicTimelineEvent[];
+  quote: PublicQuote | null;
+}
+
+export interface QuoteDecisionInput {
+  decision: QuoteDecision;
+  approvedItemIds?: string[];
+  customerNote?: string | null;
+}
+
+export interface QuoteDecisionResult {
+  quoteVersionId: string;
+  decision: QuoteDecision;
+  approvedTotal: number;
+  decidedAt: string;
 }
 
 export interface RepairOrderFilters {

@@ -16,9 +16,10 @@ import type {
 } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { DiagnosisPanel } from "./diagnosis-panel";
+import { QuotePanel } from "./quote-panel";
 import { RepairOrderActions } from "./repair-order-actions";
 
-type WorkspaceTab = "overview" | "diagnosis" | "timeline";
+type WorkspaceTab = "overview" | "diagnosis" | "quote" | "timeline";
 type LoadState = "loading" | "success" | "error";
 
 const STATUS_LABELS: Readonly<Record<RepairOrderStatus, string>> = {
@@ -297,6 +298,15 @@ export function RepairOrderWorkspaceScreen({
           Chẩn đoán <span>{order.diagnoses.length}</span>
         </button>
         <button
+          aria-controls="quote-panel"
+          aria-selected={tab === "quote"}
+          onClick={() => setTab("quote")}
+          role="tab"
+          type="button"
+        >
+          Báo giá <span>{order.quoteVersions.length}</span>
+        </button>
+        <button
           aria-controls="timeline-panel"
           aria-selected={tab === "timeline"}
           onClick={() => setTab("timeline")}
@@ -450,6 +460,16 @@ export function RepairOrderWorkspaceScreen({
           order={order}
           shopId={shopId}
           userId={auth.user.id}
+        />
+      )}
+
+      {tab === "quote" && (
+        <QuotePanel
+          api={api}
+          membership={membership}
+          onReload={() => loadWorkspace(true)}
+          order={order}
+          shopId={shopId}
         />
       )}
 

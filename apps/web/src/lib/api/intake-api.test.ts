@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RepairFlowApiError } from "./errors";
 import { BrowserIntakeApi } from "./intake-api";
-import type { CreateRepairOrderInput } from "./types";
+import type { CreateQuoteInput, CreateRepairOrderInput, Quote } from "./types";
 
 const authBody = {
   data: {
@@ -346,5 +346,88 @@ describe("BrowserIntakeApi", () => {
       recommendation: diagnosis.recommendation,
       supersedesId: null,
     });
+  });
+
+  it("maps create, replace and send quote requests with tenant and idempotency", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const orderId = "77777777-7777-4777-8777-777777777777";
+    const quoteId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const input: CreateQuoteInput = {
+      discount: 10_000,
+      customerNote: "Báo giá có hiệu lực trong ngày.",
+      expiresAt: "2026-09-24T12:00:00.000Z",
+      items: [
+        {
+          kind: "SERVICE",
+          description: "Thay linh kiện nguồn",
+          quantity: 1,
+          unitPrice: 500_000,
+          isOptional: false,
+          approvalGroup: null,
+        },
+      ],
+    };
+    const quote: Quote = {
+      id: quoteId,
+      repairOrderId: orderId,
+      diagnosisId: null,
+      versionNo: 1,
+      status: "DRAFT",
+      currency: "VND",
+      items: [
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          ...input.items[0]!,
+          lineTotal: 500_000,
+          approvalGroup: null,
+        },
+      ],
+      subtotal: 500_000,
+      discount: 10_000,
+      total: 490_000,
+      customerNote: input.customerNote ?? null,
+      expiresAt: input.expiresAt ?? null,
+      sentAt: null,
+      decidedAt: null,
+      createdAt: "2026-09-23T00:00:00.000Z",
+      updatedAt: "2026-09-23T00:00:00.000Z",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse({ data: quote }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: quote }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            quote: { ...quote, status: "SENT", sentAt: "2026-09-23T01:00:00.000Z" },
+            publicUrl: "https://repairflow.test/p/secret-token",
+          },
+        }),
+      );
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.restoreSession();
+    await api.createQuote(shopId, orderId, input);
+    await api.replaceDraftQuote(shopId, quoteId, input);
+    await api.sendQuote(shopId, quoteId, "COPY_LINK", "cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+
+    expect(fetcher.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      `/api/v1/repair-orders/${orderId}/quotes`,
+      `/api/v1/quotes/${quoteId}`,
+      `/api/v1/quotes/${quoteId}/send`,
+    ]);
+    expect(fetcher.mock.calls.slice(1).map(([, init]) => init?.method)).toEqual([
+      "POST",
+      "PATCH",
+      "POST",
+    ]);
+    for (const [, init] of fetcher.mock.calls.slice(1)) {
+      expect(new Headers(init?.headers).get("X-Shop-Id")).toBe(shopId);
+    }
+    const sendInit = fetcher.mock.calls[3]![1];
+    expect(new Headers(sendInit?.headers).get("Idempotency-Key")).toBe(
+      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    );
+    expect(JSON.parse(String(sendInit?.body))).toEqual({ channel: "COPY_LINK" });
   });
 });
