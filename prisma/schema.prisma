@@ -88,6 +88,11 @@ enum QuoteItemKind {
   FEE
 }
 
+enum QuoteQuantityUnit {
+  EACH
+  HOUR
+}
+
 enum QuoteDecision {
   ACCEPTED
   PARTIALLY_ACCEPTED
@@ -100,6 +105,13 @@ enum WorkLogType {
   CUSTOMER_CONTACT
   INTERNAL_NOTE
   CORRECTION
+}
+
+enum PartRequirementStatus {
+  NEEDED
+  ORDERED
+  AVAILABLE
+  CANCELLED
 }
 
 enum QcRunResult {
@@ -347,26 +359,27 @@ model RepairOrder {
   createdAt             DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
 
-  shop           Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  branch         Branch              @relation(fields: [shopId, branchId], references: [shopId, id], onDelete: Restrict)
-  customer       Customer            @relation(fields: [shopId, customerId], references: [shopId, id], onDelete: Restrict)
-  device         Device              @relation(fields: [shopId, deviceId], references: [shopId, id], onDelete: Restrict)
-  sourceOrder    RepairOrder?        @relation("WarrantyFollowUp", fields: [shopId, sourceOrderId], references: [shopId, id], onDelete: Restrict)
-  followUpOrders RepairOrder[]       @relation("WarrantyFollowUp")
-  accessories    IntakeAccessory[]
-  media          MediaAsset[]
-  assignments    Assignment[]
-  diagnoses      Diagnosis[]
-  quoteVersions  QuoteVersion[]
-  workLogs       WorkLog[]
-  partsUsed      PartUsed[]
-  qcRuns         QcRun[]
-  handover       Handover?
-  payments       Payment[]
-  warranty       Warranty?
-  events         OrderEvent[]
-  publicTokens   PublicAccessToken[]
-  aiRuns         AiRun[]
+  shop             Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  branch           Branch              @relation(fields: [shopId, branchId], references: [shopId, id], onDelete: Restrict)
+  customer         Customer            @relation(fields: [shopId, customerId], references: [shopId, id], onDelete: Restrict)
+  device           Device              @relation(fields: [shopId, deviceId], references: [shopId, id], onDelete: Restrict)
+  sourceOrder      RepairOrder?        @relation("WarrantyFollowUp", fields: [shopId, sourceOrderId], references: [shopId, id], onDelete: Restrict)
+  followUpOrders   RepairOrder[]       @relation("WarrantyFollowUp")
+  accessories      IntakeAccessory[]
+  media            MediaAsset[]
+  assignments      Assignment[]
+  diagnoses        Diagnosis[]
+  quoteVersions    QuoteVersion[]
+  workLogs         WorkLog[]
+  partRequirements PartRequirement[]
+  partsUsed        PartUsed[]
+  qcRuns           QcRun[]
+  handover         Handover?
+  payments         Payment[]
+  warranty         Warranty?
+  events           OrderEvent[]
+  publicTokens     PublicAccessToken[]
+  aiRuns           AiRun[]
 
   @@unique([shopId, id])
   @@unique([shopId, code])
@@ -407,9 +420,12 @@ model MediaAsset {
   expiresAt        DateTime?    @db.Timestamptz(3)
   createdAt        DateTime     @default(now()) @db.Timestamptz(3)
 
-  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  repairOrder RepairOrder? @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  repairOrder       RepairOrder?       @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  qcResultEvidence  QcResultEvidence[]
+  handoverSignature Handover?          @relation("HandoverSignature")
 
+  @@unique([shopId, id])
   @@index([shopId, repairOrderId, purpose])
   @@index([shopId, expiresAt])
   @@map("media_assets")
@@ -483,24 +499,35 @@ model QuoteVersion {
 }
 
 model QuoteItem {
-  id             String        @id @default(uuid()) @db.Uuid
-  shopId         String        @db.Uuid
-  quoteVersionId String        @db.Uuid
-  kind           QuoteItemKind
-  description    String
-  quantity       Decimal       @db.Decimal(12, 2)
-  unitPrice      BigInt
-  lineTotal      BigInt
-  isOptional     Boolean       @default(false)
-  approvalGroup  String?
-  sortOrder      Int           @default(0)
-  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  id                     String            @id @default(uuid()) @db.Uuid
+  shopId                 String            @db.Uuid
+  quoteVersionId         String            @db.Uuid
+  scopeKey               String            @default(uuid()) @db.Uuid
+  carriedFromQuoteItemId String?           @db.Uuid
+  kind                   QuoteItemKind
+  description            String
+  displayNote            String?
+  quantity               Decimal           @db.Decimal(12, 2)
+  quantityUnit           QuoteQuantityUnit @default(EACH)
+  unitPrice              BigInt
+  lineTotal              BigInt
+  isOptional             Boolean           @default(false)
+  approvalGroup          String?
+  sortOrder              Int               @default(0)
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
 
-  quoteVersion QuoteVersion @relation(fields: [shopId, quoteVersionId], references: [shopId, id], onDelete: Restrict)
-  workLogs     WorkLog[]
+  quoteVersion     QuoteVersion      @relation(fields: [shopId, quoteVersionId], references: [shopId, id], onDelete: Restrict)
+  carriedFrom      QuoteItem?        @relation("QuoteItemLineage", fields: [shopId, carriedFromQuoteItemId], references: [shopId, id], onDelete: Restrict)
+  carriedTo        QuoteItem[]       @relation("QuoteItemLineage")
+  workLogs         WorkLog[]
+  partRequirements PartRequirement[]
+  partsUsed        PartUsed[]
 
   @@unique([shopId, id])
+  @@unique([shopId, quoteVersionId, scopeKey])
   @@index([shopId, quoteVersionId, sortOrder])
+  @@index([shopId, scopeKey])
+  @@index([shopId, carriedFromQuoteItemId])
   @@map("quote_items")
 }
 
@@ -536,15 +563,51 @@ model WorkLog {
 
   repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
   quoteItem   QuoteItem?  @relation(fields: [shopId, quoteItemId], references: [shopId, id], onDelete: Restrict)
+  supersedes  WorkLog?    @relation("WorkLogCorrections", fields: [shopId, supersedesId], references: [shopId, id], onDelete: Restrict)
+  corrections WorkLog[]   @relation("WorkLogCorrections")
 
+  @@unique([shopId, id])
+  @@unique([shopId, supersedesId])
   @@index([shopId, repairOrderId, createdAt])
   @@map("work_logs")
+}
+
+model PartRequirement {
+  id              String                @id @default(uuid()) @db.Uuid
+  shopId          String                @db.Uuid
+  repairOrderId   String                @db.Uuid
+  quoteItemId     String                @db.Uuid
+  scopeKey        String                @db.Uuid
+  nameSnapshot    String
+  sku             String?
+  quantity        Decimal               @db.Decimal(12, 2)
+  quantityUnit    QuoteQuantityUnit
+  status          PartRequirementStatus @default(NEEDED)
+  lockVersion     Int                   @default(0)
+  createdByUserId String                @db.Uuid
+  updatedByUserId String                @db.Uuid
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(3)
+
+  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  quoteItem   QuoteItem   @relation(fields: [shopId, quoteItemId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([shopId, id])
+  @@index([shopId, repairOrderId, status])
+  @@index([shopId, repairOrderId, scopeKey])
+  /// PostgreSQL partial unique index `part_requirements_one_current_scope_idx`
+  /// enforces one non-CANCELLED row per (shopId, repairOrderId, scopeKey).
+  @@map("part_requirements")
 }
 
 model PartUsed {
   id              String   @id @default(uuid()) @db.Uuid
   shopId          String   @db.Uuid
   repairOrderId   String   @db.Uuid
+  /// Nullable only for pre-RF-040 rows; every API-created snapshot requires both fields.
+  quoteItemId     String?  @db.Uuid
+  scopeKey        String?  @db.Uuid
+  supersedesId    String?  @db.Uuid
   name            String
   sku             String?
   quantity        Decimal  @db.Decimal(12, 2)
@@ -554,26 +617,34 @@ model PartUsed {
   createdAt       DateTime @default(now()) @db.Timestamptz(3)
 
   repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  quoteItem   QuoteItem?  @relation(fields: [shopId, quoteItemId], references: [shopId, id], onDelete: Restrict)
+  supersedes  PartUsed?   @relation("PartUsedCorrections", fields: [shopId, supersedesId], references: [shopId, id], onDelete: Restrict)
+  corrections PartUsed[]  @relation("PartUsedCorrections")
 
-  @@index([shopId, repairOrderId])
+  @@unique([shopId, id])
+  @@unique([shopId, supersedesId])
+  @@index([shopId, repairOrderId, scopeKey, createdAt])
   @@map("parts_used")
 }
 
 model QcTemplate {
-  id        String   @id @default(uuid()) @db.Uuid
-  shopId    String   @db.Uuid
-  name      String
-  versionNo Int
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  id             String   @id @default(uuid()) @db.Uuid
+  shopId         String   @db.Uuid
+  name           String
+  normalizedName String
+  versionNo      Int
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
   shop  Shop             @relation(fields: [shopId], references: [id], onDelete: Restrict)
   items QcTemplateItem[]
   runs  QcRun[]
 
   @@unique([shopId, id])
-  @@unique([shopId, name, versionNo])
+  @@unique([shopId, normalizedName, versionNo])
   @@index([shopId, isActive])
+  /// PostgreSQL partial unique index `qc_templates_one_active_family_idx`
+  /// enforces one active version per (shopId, normalizedName).
   @@map("qc_templates")
 }
 
@@ -591,6 +662,7 @@ model QcTemplateItem {
   results  QcResult[]
 
   @@unique([shopId, id])
+  @@unique([shopId, qcTemplateId, sortOrder])
   @@index([shopId, qcTemplateId, sortOrder])
   @@map("qc_template_items")
 }
@@ -600,6 +672,7 @@ model QcRun {
   shopId          String      @db.Uuid
   repairOrderId   String      @db.Uuid
   qcTemplateId    String      @db.Uuid
+  runNo           Int
   result          QcRunResult
   notes           String?
   checkedByUserId String      @db.Uuid
@@ -610,7 +683,8 @@ model QcRun {
   results     QcResult[]
 
   @@unique([shopId, id])
-  @@index([shopId, repairOrderId, createdAt])
+  @@unique([shopId, repairOrderId, runNo])
+  @@index([shopId, repairOrderId, runNo(sort: Desc)])
   @@map("qc_runs")
 }
 
@@ -622,12 +696,30 @@ model QcResult {
   result           QcItemResult
   note             String?
 
-  run          QcRun          @relation(fields: [shopId, qcRunId], references: [shopId, id], onDelete: Restrict)
-  templateItem QcTemplateItem @relation(fields: [shopId, qcTemplateItemId], references: [shopId, id], onDelete: Restrict)
+  run          QcRun              @relation(fields: [shopId, qcRunId], references: [shopId, id], onDelete: Restrict)
+  templateItem QcTemplateItem     @relation(fields: [shopId, qcTemplateItemId], references: [shopId, id], onDelete: Restrict)
+  evidence     QcResultEvidence[]
 
+  @@unique([shopId, id])
   @@unique([qcRunId, qcTemplateItemId])
   @@index([shopId, qcRunId])
   @@map("qc_results")
+}
+
+model QcResultEvidence {
+  id           String   @id @default(uuid()) @db.Uuid
+  shopId       String   @db.Uuid
+  qcResultId   String   @db.Uuid
+  mediaAssetId String   @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  result     QcResult   @relation(fields: [shopId, qcResultId], references: [shopId, id], onDelete: Restrict)
+  mediaAsset MediaAsset @relation(fields: [shopId, mediaAssetId], references: [shopId, id], onDelete: Restrict)
+
+  @@unique([shopId, qcResultId, mediaAssetId])
+  @@unique([shopId, mediaAssetId])
+  @@index([shopId, qcResultId])
+  @@map("qc_result_evidence")
 }
 
 model Handover {
@@ -641,9 +733,11 @@ model Handover {
   handedOverByUserId    String             @db.Uuid
   handedOverAt          DateTime           @default(now()) @db.Timestamptz(3)
 
-  repairOrder RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  repairOrder         RepairOrder @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  signatureMediaAsset MediaAsset? @relation("HandoverSignature", fields: [shopId, signatureMediaAssetId], references: [shopId, id], onDelete: Restrict)
 
   @@unique([shopId, repairOrderId])
+  @@unique([shopId, signatureMediaAssetId])
   @@index([shopId, handedOverAt])
   @@map("handovers")
 }

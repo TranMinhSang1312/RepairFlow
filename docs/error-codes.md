@@ -52,6 +52,23 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 409 | `COMPLETION_OUTCOME_REQUIRED` | Ready/completed transition lacks a valid outcome. |
 | 409 | `QC_PASS_REQUIRED` | Repaired outcome lacks a latest passing QC run. |
 | 409 | `HANDOVER_ALREADY_COMPLETED` | Order is already terminal. |
+| 409 | `APPROVED_SCOPE_REQUIRED` | Command requires a binding approved snapshot. |
+| 409 | `APPROVED_ITEM_REQUIRED` | Referenced item is absent from current approved scope or has the wrong kind. |
+| 409 | `WORK_LOG_CORRECTION_INVALID` | Correction target is not the current effective leaf or does not belong to the order. |
+| 409 | `PART_REQUIREMENT_INVALID_TRANSITION` | Requested availability edge is invalid or system-only. |
+| 409 | `PARTS_NOT_AVAILABLE` | A required current-scope part is not available. |
+| 409 | `PART_QUANTITY_EXCEEDED` | Effective used quantity would exceed approved quantity. |
+| 409 | `QC_TEMPLATE_INACTIVE` | QC submission references an inactive template version. |
+| 409 | `QC_TEMPLATE_VERSION_CONFLICT` | Concurrent template version allocation or active-family change conflicted. |
+| 422 | `QC_RESULTS_INCOMPLETE` | Results do not cover every template item exactly once. |
+| 422 | `QC_FAILURE_NOTE_REQUIRED` | A failed QC run has no non-blank failure note. |
+| 409 | `PAYMENT_NOT_ALLOWED` | Order state, approval, handover disposition, or zero-total outcome forbids payment. |
+| 409 | `PAYMENT_EXCEEDS_BALANCE` | Payment exceeds authoritative amount due. |
+| 422 | `PAYMENT_DISPOSITION_INVALID` | Disposition, paid/due totals, or required explanatory note disagree. |
+| 422 | `WARRANTY_REQUIRED` | Repaired handover lacks valid warranty end and terms. |
+| 409 | `WARRANTY_NOT_ELIGIBLE` | Source order is outside active warranty or was not confirmed eligible. |
+| 409 | `WARRANTY_SOURCE_INVALID` | Source is not a same-tenant completed order with a valid repair warranty. |
+| 410 | `TOKEN_EXPIRED` | Idempotent handover replay occurred after its tracking token expired; no token was minted. |
 
 ## Quotes and public access
 
@@ -64,6 +81,7 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 422 | `QUOTE_ITEMS_REQUIRED` | Quote has no items. |
 | 422 | `QUOTE_APPROVAL_GROUP_INVALID` | Selected items violate required group rules. |
 | 422 | `QUOTE_DESTINATION_REQUIRED` | Selected delivery channel has no usable destination in the intake customer snapshot. |
+| 422 | `QUOTE_SCOPE_LINEAGE_INVALID` | Requested carry-forward does not match valid same-order stable lineage. |
 | 404 | `PUBLIC_LINK_INVALID` | Token is invalid or revoked; response does not reveal which. |
 | 410 | `PUBLIC_LINK_EXPIRED` | Token expired. |
 | 410 | `PUBLIC_QUOTE_UNAVAILABLE` | Quote expired or was superseded. |

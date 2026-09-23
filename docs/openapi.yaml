@@ -508,60 +508,178 @@ paths:
   /api/v1/repair-orders/{repairOrderId}/work-logs:
     post:
       tags: [Service]
-      summary: Append a work log
+      summary: Append a work log or immutable correction
       operationId: createWorkLog
       parameters:
         - $ref: '#/components/parameters/ShopHeader'
         - $ref: '#/components/parameters/RepairOrderId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/CreateWorkLogRequest'}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateWorkLogRequest'}}}}
       responses:
-        '201': {description: Work log created}
+        '201': {description: Work log created, content: {application/json: {schema: {$ref: '#/components/schemas/WorkLogResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders/{repairOrderId}/part-requirements:
+    post:
+      tags: [Service]
+      summary: Create a current approved-part availability requirement
+      operationId: createPartRequirement
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePartRequirementRequest'}}}}
+      responses:
+        '201': {description: Requirement created, content: {application/json: {schema: {$ref: '#/components/schemas/PartRequirementResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/part-requirements/{partRequirementId}:
+    patch:
+      tags: [Service]
+      summary: Advance staff-controlled part availability
+      operationId: updatePartRequirement
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/PartRequirementId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdatePartRequirementRequest'}}}}
+      responses:
+        '200': {description: Requirement advanced, content: {application/json: {schema: {$ref: '#/components/schemas/PartRequirementResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+
+  /api/v1/repair-orders/{repairOrderId}/parts-used:
+    post:
+      tags: [Service]
+      summary: Append a used-part snapshot or immutable correction
+      operationId: createPartUsed
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePartUsedRequest'}}}}
+      responses:
+        '201': {description: Used part recorded, content: {application/json: {schema: {$ref: '#/components/schemas/PartUsedResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/qc-templates:
+    get:
+      tags: [Service]
+      summary: List immutable QC template versions
+      operationId: listQcTemplates
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - {name: includeInactive, in: query, schema: {type: boolean, default: false}}
+      responses:
+        '200': {description: Templates, content: {application/json: {schema: {$ref: '#/components/schemas/QcTemplateListResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Service]
+      summary: Create the next immutable QC template family version
+      operationId: createQcTemplateVersion
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateQcTemplateRequest'}}}}
+      responses:
+        '201': {description: Active version created, content: {application/json: {schema: {$ref: '#/components/schemas/QcTemplateResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/qc-templates/{qcTemplateId}/deactivate:
+    post:
+      tags: [Service]
+      summary: Deactivate the active QC template family version
+      operationId: deactivateQcTemplate
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/QcTemplateId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': {description: Template deactivated, content: {application/json: {schema: {$ref: '#/components/schemas/QcTemplateResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
 
   /api/v1/repair-orders/{repairOrderId}/qc-runs:
     post:
       tags: [Service]
-      summary: Submit a QC run and derive pass/fail
+      summary: Submit a complete QC run and derive pass/fail
       operationId: createQcRun
       parameters:
         - $ref: '#/components/parameters/ShopHeader'
         - $ref: '#/components/parameters/RepairOrderId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/CreateQcRunRequest'}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateQcRunRequest'}}}}
       responses:
-        '201': {description: QC run created}
+        '201': {description: QC run created, content: {application/json: {schema: {$ref: '#/components/schemas/QcRunResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders/{repairOrderId}/payments:
+    post:
+      tags: [Service]
+      summary: Record an idempotent operational payment receipt
+      operationId: createPayment
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePaymentRequest'}}}}
+      responses:
+        '201': {description: Payment recorded, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
   /api/v1/repair-orders/{repairOrderId}/handovers:
     post:
       tags: [Service]
-      summary: Record payment disposition, handover, warranty, and completion
+      summary: Atomically record final payment, handover, warranty, completion, and tracking access
       operationId: completeHandover
       parameters:
         - $ref: '#/components/parameters/ShopHeader'
         - $ref: '#/components/parameters/RepairOrderId'
         - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/CompleteHandoverRequest'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CompleteHandoverRequest'}}}}
       responses:
-        '201':
-          description: Handover completed
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/RepairOrderResponse'}
+        '201': {description: Handover aggregate, content: {application/json: {schema: {$ref: '#/components/schemas/HandoverResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
+        '410': {$ref: '#/components/responses/TokenExpired'}
+        '422': {$ref: '#/components/responses/ValidationError'}
 
+  /api/v1/repair-orders/{sourceOrderId}/warranty-orders:
+    post:
+      tags: [Service]
+      summary: Create a new warranty follow-up without mutating the completed source
+      operationId: createWarrantyFollowUp
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/SourceOrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateWarrantyOrderRequest'}}}}
+      responses:
+        '201': {description: Warranty order created, content: {application/json: {schema: {$ref: '#/components/schemas/RepairOrderDetailResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+        '422': {$ref: '#/components/responses/ValidationError'}
   /public/v1/orders/{token}:
     get:
       tags: [Public portal]
@@ -685,8 +803,23 @@ components:
       in: path
       required: true
       schema: {$ref: '#/components/schemas/Uuid'}
+    SourceOrderId:
+      name: sourceOrderId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
     QuoteVersionId:
       name: quoteVersionId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    PartRequirementId:
+      name: partRequirementId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    QcTemplateId:
+      name: qcTemplateId
       in: path
       required: true
       schema: {$ref: '#/components/schemas/Uuid'}
@@ -728,6 +861,9 @@ components:
       content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
     PublicLinkExpired:
       description: Public link or quote has expired or been superseded
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    TokenExpired:
+      description: Handover replay is past TRACK expiry; returns TOKEN_EXPIRED and never mints another token
       content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
 
   schemas:
@@ -929,10 +1065,12 @@ components:
           items: {$ref: '#/components/schemas/Uuid'}
     RepairOrder:
       type: object
-      required: [id, code, status, priority, reportedProblem, intakeCondition, receivedAt, lockVersion, customer, device]
+      required: [id, code, serviceType, sourceOrderId, status, priority, reportedProblem, intakeCondition, receivedAt, lockVersion, customer, device]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         code: {type: string}
+        serviceType: {type: string, enum: [STANDARD, WARRANTY]}
+        sourceOrderId: {type: [string, 'null'], format: uuid}
         status: {$ref: '#/components/schemas/RepairOrderStatus'}
         completionOutcome:
           oneOf:
@@ -992,7 +1130,7 @@ components:
       allOf:
         - {$ref: '#/components/schemas/RepairOrder'}
         - type: object
-          required: [accessories, media, activeAssignment, diagnoses, quoteVersions, timeline]
+          required: [accessories, media, activeAssignment, diagnoses, quoteVersions, approvedScope, workLogs, partRequirements, partsUsed, qcRuns, paymentSummary, payments, handover, warranty, sourceOrder, followUpOrders, timeline]
           properties:
             accessories:
               type: array
@@ -1010,6 +1148,21 @@ components:
             quoteVersions:
               type: array
               items: {$ref: '#/components/schemas/Quote'}
+            approvedScope:
+              oneOf: [{$ref: '#/components/schemas/ApprovedScopeSummary'}, {type: 'null'}]
+            workLogs: {type: array, items: {$ref: '#/components/schemas/WorkLog'}}
+            partRequirements: {type: array, items: {$ref: '#/components/schemas/PartRequirement'}}
+            partsUsed: {type: array, items: {$ref: '#/components/schemas/PartUsed'}}
+            qcRuns: {type: array, description: Ordered by runNo descending., items: {$ref: '#/components/schemas/QcRun'}}
+            paymentSummary: {$ref: '#/components/schemas/PaymentSummary'}
+            payments: {type: array, items: {$ref: '#/components/schemas/Payment'} }
+            handover:
+              oneOf: [{$ref: '#/components/schemas/Handover'}, {type: 'null'}]
+            warranty:
+              oneOf: [{$ref: '#/components/schemas/Warranty'}, {type: 'null'}]
+            sourceOrder:
+              oneOf: [{$ref: '#/components/schemas/LinkedOrderSummary'}, {type: 'null'}]
+            followUpOrders: {type: array, items: {$ref: '#/components/schemas/LinkedOrderSummary'}}
             timeline:
               type: array
               items: {$ref: '#/components/schemas/RepairOrderTimelineEvent'}
@@ -1129,16 +1282,19 @@ components:
     CreateQuoteItem:
       type: object
       additionalProperties: false
-      required: [kind, description, quantity, unitPrice, isOptional]
+      required: [kind, description, quantity, quantityUnit, unitPrice, isOptional]
       properties:
         kind: {type: string, enum: [SERVICE, PART, FEE]}
         description: {type: string, minLength: 1, maxLength: 500}
+        displayNote: {type: [string, 'null'], maxLength: 1000, description: Customer-facing non-binding note; excluded from lineage identity.}
+        carriedFromQuoteItemId: {type: [string, 'null'], format: uuid, description: Prior same-order item requested for server-validated lineage carry-forward.}
         quantity:
           type: number
           exclusiveMinimum: 0
           multipleOf: 0.01
           description: Server multiplies the decimal quantity by integer VND unitPrice and rounds half-up to the nearest VND.
         unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
+        quantityUnit: {type: string, enum: [EACH, HOUR]}
         isOptional: {type: boolean}
         approvalGroup:
           type: [string, 'null']
@@ -1147,12 +1303,16 @@ components:
     QuoteItem:
       type: object
       additionalProperties: false
-      required: [id, kind, description, quantity, unitPrice, lineTotal, isOptional, approvalGroup]
+      required: [id, scopeKey, carriedFromQuoteItemId, kind, description, displayNote, quantity, quantityUnit, unitPrice, lineTotal, isOptional, approvalGroup]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
+        scopeKey: {$ref: '#/components/schemas/Uuid'}
+        carriedFromQuoteItemId: {type: [string, 'null'], format: uuid}
         kind: {type: string, enum: [SERVICE, PART, FEE]}
         description: {type: string}
+        displayNote: {type: [string, 'null']}
         quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        quantityUnit: {type: string, enum: [EACH, HOUR]}
         unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
         lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
         isOptional: {type: boolean}
@@ -1207,6 +1367,33 @@ components:
               allOf: [{$ref: '#/components/schemas/MoneyVnd'}]
               description: max(0, sum of accepted line totals minus the quote-level discount).
             decidedAt: {$ref: '#/components/schemas/IsoDateTime'}
+    ApprovedScopeItem:
+      type: object
+      additionalProperties: false
+      required: [quoteItemId, scopeKey, kind, description, displayNote, quantity, quantityUnit, unitPrice, lineTotal, isOptional, approvalGroup]
+      properties:
+        quoteItemId: {$ref: '#/components/schemas/Uuid'}
+        scopeKey: {$ref: '#/components/schemas/Uuid'}
+        kind: {type: string, enum: [SERVICE, PART, FEE]}
+        description: {type: string}
+        displayNote: {type: [string, 'null']}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        quantityUnit: {type: string, enum: [EACH, HOUR]}
+        unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
+        lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
+        isOptional: {type: boolean}
+        approvalGroup: {type: [string, 'null']}
+    ApprovedScopeSummary:
+      type: object
+      additionalProperties: false
+      required: [quoteVersionId, decision, approvedTotal, decidedAt, items]
+      properties:
+        quoteVersionId: {$ref: '#/components/schemas/Uuid'}
+        decision: {type: string, enum: [ACCEPTED, PARTIALLY_ACCEPTED]}
+        approvedTotal: {$ref: '#/components/schemas/MoneyVnd'}
+        decidedAt: {$ref: '#/components/schemas/IsoDateTime'}
+        items: {type: array, items: {$ref: '#/components/schemas/ApprovedScopeItem'}}
+
     CreateWorkLogRequest:
       type: object
       additionalProperties: false
@@ -1214,55 +1401,338 @@ components:
       properties:
         type: {type: string, enum: [REPAIR, TEST, CUSTOMER_CONTACT, INTERNAL_NOTE, CORRECTION]}
         content: {type: string, minLength: 1, maxLength: 10000}
+        quoteItemId: {type: [string, 'null'], format: uuid, description: Required for REPAIR/TEST; forbidden for operational notes and derived for corrections.}
+        supersedesId: {type: [string, 'null'], format: uuid, description: Required only for CORRECTION and must name the effective leaf.}
+    WorkLog:
+      type: object
+      additionalProperties: false
+      required: [id, repairOrderId, quoteItemId, scopeKey, type, effectiveType, content, supersedesId, isEffective, createdByUserId, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
         quoteItemId: {type: [string, 'null'], format: uuid}
+        scopeKey: {type: [string, 'null'], format: uuid}
+        type: {type: string, enum: [REPAIR, TEST, CUSTOMER_CONTACT, INTERNAL_NOTE, CORRECTION]}
+        effectiveType: {type: string, enum: [REPAIR, TEST, CUSTOMER_CONTACT, INTERNAL_NOTE]}
+        content: {type: string}
         supersedesId: {type: [string, 'null'], format: uuid}
+        isEffective: {type: boolean}
+        createdByUserId: {$ref: '#/components/schemas/Uuid'}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    WorkLogResponse: {type: object, required: [data], properties: {data: {$ref: '#/components/schemas/WorkLog'}}}
+
+    CreatePartRequirementRequest:
+      type: object
+      additionalProperties: false
+      required: [quoteItemId]
+      properties:
+        quoteItemId: {$ref: '#/components/schemas/Uuid'}
+        sku: {type: [string, 'null'], maxLength: 100}
+    UpdatePartRequirementRequest:
+      type: object
+      additionalProperties: false
+      required: [targetStatus, expectedLockVersion]
+      properties:
+        targetStatus: {type: string, enum: [ORDERED, AVAILABLE], description: CANCELLED is deliberately absent because it is system-only.}
+        expectedLockVersion: {type: integer, minimum: 0}
+    PartRequirement:
+      type: object
+      additionalProperties: false
+      required: [id, repairOrderId, quoteItemId, scopeKey, nameSnapshot, sku, quantity, quantityUnit, status, lockVersion, createdByUserId, updatedByUserId, createdAt, updatedAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        quoteItemId: {$ref: '#/components/schemas/Uuid'}
+        scopeKey: {$ref: '#/components/schemas/Uuid'}
+        nameSnapshot: {type: string}
+        sku: {type: [string, 'null']}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        quantityUnit: {type: string, enum: [EACH, HOUR]}
+        status: {type: string, enum: [NEEDED, ORDERED, AVAILABLE, CANCELLED]}
+        lockVersion: {type: integer, minimum: 0}
+        createdByUserId: {$ref: '#/components/schemas/Uuid'}
+        updatedByUserId: {$ref: '#/components/schemas/Uuid'}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+        updatedAt: {$ref: '#/components/schemas/IsoDateTime'}
+    PartRequirementResponse: {type: object, required: [data], properties: {data: {$ref: '#/components/schemas/PartRequirement'}}}
+
+    CreatePartUsedRequest:
+      type: object
+      additionalProperties: false
+      required: [quoteItemId, name, quantity]
+      properties:
+        quoteItemId: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string, minLength: 1, maxLength: 300}
+        sku: {type: [string, 'null'], maxLength: 100}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        unitCost: {oneOf: [{$ref: '#/components/schemas/MoneyVnd'}, {type: 'null'}]}
+        unitSalePrice: {oneOf: [{$ref: '#/components/schemas/MoneyVnd'}, {type: 'null'}]}
+        supersedesId: {type: [string, 'null'], format: uuid}
+    PartUsed:
+      type: object
+      additionalProperties: false
+      required: [id, repairOrderId, quoteItemId, scopeKey, supersedesId, name, sku, quantity, unitCost, unitSalePrice, isEffective, createdByUserId, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        quoteItemId: {$ref: '#/components/schemas/Uuid'}
+        scopeKey: {$ref: '#/components/schemas/Uuid'}
+        supersedesId: {type: [string, 'null'], format: uuid}
+        name: {type: string}
+        sku: {type: [string, 'null']}
+        quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        unitCost: {oneOf: [{$ref: '#/components/schemas/MoneyVnd'}, {type: 'null'}]}
+        unitSalePrice: {oneOf: [{$ref: '#/components/schemas/MoneyVnd'}, {type: 'null'}]}
+        isEffective: {type: boolean}
+        createdByUserId: {$ref: '#/components/schemas/Uuid'}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    PartUsedResponse: {type: object, required: [data], properties: {data: {$ref: '#/components/schemas/PartUsed'}}}
+
+    CreateQcTemplateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, items]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [label, isRequired, allowNa, sortOrder]
+            properties:
+              label: {type: string, minLength: 1, maxLength: 500}
+              isRequired: {type: boolean}
+              allowNa: {type: boolean}
+              sortOrder: {type: integer, minimum: 1}
+    QcTemplateItem:
+      type: object
+      additionalProperties: false
+      required: [id, label, isRequired, allowNa, sortOrder]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        label: {type: string}
+        isRequired: {type: boolean}
+        allowNa: {type: boolean}
+        sortOrder: {type: integer, minimum: 1}
+    QcTemplate:
+      type: object
+      additionalProperties: false
+      required: [id, name, versionNo, isActive, items, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        versionNo: {type: integer, minimum: 1}
+        isActive: {type: boolean}
+        items: {type: array, items: {$ref: '#/components/schemas/QcTemplateItem'}}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    QcTemplateResponse: {type: object, required: [data], properties: {data: {$ref: '#/components/schemas/QcTemplate'}}}
+    QcTemplateListResponse: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/QcTemplate'}}}}
+
     CreateQcRunRequest:
       type: object
       additionalProperties: false
-      required: [qcTemplateId, results]
+      required: [qcTemplateId, expectedLockVersion, results]
       properties:
         qcTemplateId: {$ref: '#/components/schemas/Uuid'}
+        expectedLockVersion: {type: integer, minimum: 0}
         notes: {type: [string, 'null'], maxLength: 5000}
         results:
           type: array
           minItems: 1
+          uniqueItems: true
           items:
             type: object
-            required: [qcTemplateItemId, result]
+            additionalProperties: false
+            required: [qcTemplateItemId, result, evidenceMediaAssetIds]
             properties:
               qcTemplateItemId: {$ref: '#/components/schemas/Uuid'}
               result: {type: string, enum: [PASS, FAIL, NOT_APPLICABLE]}
               note: {type: [string, 'null'], maxLength: 1000}
+              evidenceMediaAssetIds: {type: array, maxItems: 10, uniqueItems: true, items: {$ref: '#/components/schemas/Uuid'}}
+    QcResult:
+      type: object
+      additionalProperties: false
+      required: [id, qcTemplateItemId, labelSnapshot, result, note, evidenceMediaAssetIds]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        qcTemplateItemId: {$ref: '#/components/schemas/Uuid'}
+        labelSnapshot: {type: string}
+        result: {type: string, enum: [PASS, FAIL, NOT_APPLICABLE]}
+        note: {type: [string, 'null']}
+        evidenceMediaAssetIds: {type: array, items: {$ref: '#/components/schemas/Uuid'}}
+    QcRun:
+      type: object
+      additionalProperties: false
+      required: [id, repairOrderId, qcTemplateId, templateName, templateVersionNo, runNo, result, notes, results, checkedByUserId, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        qcTemplateId: {$ref: '#/components/schemas/Uuid'}
+        templateName: {type: string}
+        templateVersionNo: {type: integer, minimum: 1}
+        runNo: {type: integer, minimum: 1}
+        result: {type: string, enum: [PASS, FAIL]}
+        notes: {type: [string, 'null']}
+        results: {type: array, items: {$ref: '#/components/schemas/QcResult'}}
+        checkedByUserId: {$ref: '#/components/schemas/Uuid'}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    QcRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [run, orderStatus, orderLockVersion]
+          properties:
+            run: {$ref: '#/components/schemas/QcRun'}
+            orderStatus: {$ref: '#/components/schemas/RepairOrderStatus'}
+            orderLockVersion: {type: integer, minimum: 0}
+
+    CreatePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, method]
+      properties:
+        amount: {type: integer, format: int64, minimum: 1}
+        method: {type: string, enum: [CASH, BANK_TRANSFER, CARD, E_WALLET, OTHER]}
+        reference: {type: [string, 'null'], maxLength: 200}
+    Payment:
+      type: object
+      additionalProperties: false
+      required: [id, amount, method, reference, receivedByUserId, receivedAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        amount: {type: integer, format: int64, minimum: 1}
+        method: {type: string, enum: [CASH, BANK_TRANSFER, CARD, E_WALLET, OTHER]}
+        reference: {type: [string, 'null']}
+        receivedByUserId: {$ref: '#/components/schemas/Uuid'}
+        receivedAt: {$ref: '#/components/schemas/IsoDateTime'}
+    PaymentSummary:
+      type: object
+      additionalProperties: false
+      required: [approvedTotal, paidTotal, amountDue]
+      properties:
+        approvedTotal: {$ref: '#/components/schemas/MoneyVnd'}
+        paidTotal: {$ref: '#/components/schemas/MoneyVnd'}
+        amountDue: {$ref: '#/components/schemas/MoneyVnd'}
+    PaymentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [payment, summary]
+          properties:
+            payment: {$ref: '#/components/schemas/Payment'}
+            summary: {$ref: '#/components/schemas/PaymentSummary'}
+
     CompleteHandoverRequest:
       type: object
       additionalProperties: false
-      required: [recipientName, paymentDisposition]
+      required: [recipientName, paymentDisposition, expectedLockVersion]
       properties:
         recipientName: {type: string, minLength: 1, maxLength: 150}
         paymentDisposition: {type: string, enum: [PAID, PARTIALLY_PAID, WAIVED, PAY_LATER]}
         paymentNote: {type: [string, 'null'], maxLength: 1000}
         signatureMediaAssetId: {type: [string, 'null'], format: uuid}
+        expectedLockVersion: {type: integer, minimum: 0}
         payment:
-          type: [object, 'null']
-          properties:
-            amount: {$ref: '#/components/schemas/MoneyVnd'}
-            method: {type: string, enum: [CASH, BANK_TRANSFER, CARD, E_WALLET, OTHER]}
-            reference: {type: [string, 'null'], maxLength: 200}
+          oneOf:
+            - {$ref: '#/components/schemas/CreatePaymentRequest'}
+            - {type: 'null'}
         warranty:
           type: [object, 'null']
+          additionalProperties: false
+          required: [endsAt, terms]
           properties:
-            startsAt: {$ref: '#/components/schemas/IsoDateTime'}
             endsAt: {$ref: '#/components/schemas/IsoDateTime'}
             terms: {type: string, minLength: 1, maxLength: 10000}
+    Handover:
+      type: object
+      additionalProperties: false
+      required: [id, recipientName, paymentDisposition, paymentNote, handedOverByUserId, handedOverAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        recipientName: {type: string}
+        paymentDisposition: {type: string, enum: [PAID, PARTIALLY_PAID, WAIVED, PAY_LATER]}
+        paymentNote: {type: [string, 'null']}
+        handedOverByUserId: {$ref: '#/components/schemas/Uuid'}
+        handedOverAt: {$ref: '#/components/schemas/IsoDateTime'}
+    Warranty:
+      type: object
+      additionalProperties: false
+      required: [id, startsAt, endsAt, terms]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        startsAt: {$ref: '#/components/schemas/IsoDateTime'}
+        endsAt: {$ref: '#/components/schemas/IsoDateTime'}
+        terms: {type: string}
+    HandoverResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order, handover, payment, warranty, paymentSummary, trackingUrl, trackingExpiresAt]
+          properties:
+            order: {$ref: '#/components/schemas/RepairOrder'}
+            handover: {$ref: '#/components/schemas/Handover'}
+            payment: {oneOf: [{$ref: '#/components/schemas/Payment'}, {type: 'null'}]}
+            warranty: {oneOf: [{$ref: '#/components/schemas/Warranty'}, {type: 'null'}]}
+            paymentSummary: {$ref: '#/components/schemas/PaymentSummary'}
+            trackingUrl: {type: string, format: uri, description: Derived only for this response and never persisted.}
+            trackingExpiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+
+    CreateWarrantyOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [eligibilityConfirmed, branchId, priority, reportedProblem, intakeCondition, consentAccepted, accessories, intakeMediaAssetIds]
+      properties:
+        eligibilityConfirmed: {type: boolean, const: true}
+        branchId: {$ref: '#/components/schemas/Uuid'}
+        priority: {type: string, enum: [LOW, NORMAL, HIGH, URGENT], default: NORMAL}
+        reportedProblem: {type: string, minLength: 1, maxLength: 5000}
+        intakeCondition: {type: string, minLength: 1, maxLength: 5000}
+        consentAccepted: {type: boolean, const: true}
+        promisedAt: {type: [string, 'null'], format: date-time}
+        accessories:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [name]
+            properties:
+              name: {type: string, minLength: 1, maxLength: 200}
+              conditionNote: {type: [string, 'null'], maxLength: 1000}
+        intakeMediaAssetIds: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {$ref: '#/components/schemas/Uuid'}}
+    LinkedOrderSummary:
+      type: object
+      additionalProperties: false
+      required: [code, serviceType, status, completionOutcome, receivedAt, readyAt, returnedAt]
+      properties:
+        code: {type: string}
+        serviceType: {type: string, enum: [STANDARD, WARRANTY]}
+        status: {$ref: '#/components/schemas/RepairOrderStatus'}
+        completionOutcome: {oneOf: [{$ref: '#/components/schemas/CompletionOutcome'}, {type: 'null'}]}
+        receivedAt: {$ref: '#/components/schemas/IsoDateTime'}
+        readyAt: {type: [string, 'null'], format: date-time}
+        returnedAt: {type: [string, 'null'], format: date-time}
     PublicQuoteItem:
       type: object
       additionalProperties: false
-      required: [id, kind, description, quantity, unitPrice, lineTotal, isOptional, approvalGroup]
+      required: [id, kind, description, displayNote, quantity, quantityUnit, unitPrice, lineTotal, isOptional, approvalGroup]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         kind: {type: string, enum: [SERVICE, PART, FEE]}
         description: {type: string}
+        displayNote: {type: [string, 'null']}
         quantity: {type: number, exclusiveMinimum: 0, multipleOf: 0.01}
+        quantityUnit: {type: string, enum: [EACH, HOUR]}
         unitPrice: {$ref: '#/components/schemas/MoneyVnd'}
         lineTotal: {$ref: '#/components/schemas/MoneyVnd'}
         isOptional: {type: boolean}
@@ -1294,7 +1764,8 @@ components:
       properties:
         data:
           type: object
-          required: [shopName, orderCode, deviceLabel, status, timeline]
+          additionalProperties: false
+          required: [shopName, shopContact, orderCode, deviceLabel, status, completionOutcome, readyAt, returnedAt, timeline, quote, warranty, linkedOrders]
           properties:
             shopName: {type: string}
             shopContact: {type: [string, 'null']}
@@ -1305,6 +1776,8 @@ components:
               oneOf:
                 - {$ref: '#/components/schemas/CompletionOutcome'}
                 - {type: 'null'}
+            readyAt: {type: [string, 'null'], format: date-time}
+            returnedAt: {type: [string, 'null'], format: date-time}
             timeline:
               type: array
               items:
@@ -1318,6 +1791,21 @@ components:
               oneOf:
                 - {$ref: '#/components/schemas/PublicQuote'}
                 - {type: 'null'}
+            warranty:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [startsAt, endsAt, terms, status]
+                  properties:
+                    startsAt: {$ref: '#/components/schemas/IsoDateTime'}
+                    endsAt: {$ref: '#/components/schemas/IsoDateTime'}
+                    terms: {type: string}
+                    status: {type: string, enum: [ACTIVE, EXPIRED]}
+                - {type: 'null'}
+            linkedOrders:
+              type: array
+              description: Safe child/source progress without internal UUIDs.
+              items: {$ref: '#/components/schemas/LinkedOrderSummary'}
     AiRunResponse:
       type: object
       required: [data]

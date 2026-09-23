@@ -40,7 +40,10 @@ Legend: `A` allowed, `O` allowed only for an assigned order, `—` denied, `T` a
 | Decide current quote | — | — | — | T |
 | Start approved repair | A | — | O | — |
 | Add work log | A | — | O | — |
+| Mark diagnosed non-repair/cancellation ready | A | A | — | — |
+| Create/update part requirement | A | — | O | — |
 | Record parts used | A | — | O | — |
+| Manage QC templates | A | — | — | — |
 | Submit QC run | A | — | O | — |
 | Override failed QC | — | — | — | — |
 | Mark ready after passing QC | A | A | O | — |
@@ -70,6 +73,8 @@ Legend: `A` allowed, `O` allowed only for an assigned order, `—` denied, `T` a
 | `DECIDE_QUOTE` | Read one filtered order and one bound quote version; submit one idempotent decision before expiry. |
 
 A `TRACK_ORDER` token cannot decide a quote. A `DECIDE_QUOTE` token cannot access another quote version or repair order.
+
+`CANCELLED` part requirements are system-only. Staff permission never authorizes that target state. A receptionist may perform the guarded diagnosed non-repair/cancellation ready transition, but cannot execute technical work or QC. A warranty follow-up still requires an eligible completed source and explicit eligibility confirmation.
 
 ## Server enforcement
 
