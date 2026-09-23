@@ -23,6 +23,13 @@ import type {
   SendQuoteResult,
   RepairOrderStatus,
   RepairOrderSummary,
+  CreateWorkLogInput,
+  WorkLog,
+  CreatePartRequirementInput,
+  UpdatePartRequirementInput,
+  PartRequirement,
+  CreatePartUsedInput,
+  PartUsed,
 } from "./types";
 
 interface DataResponse<T> {
@@ -95,6 +102,30 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
     channel: QuoteSendChannel,
     idempotencyKey: string,
   ): Promise<SendQuoteResult>;
+  createWorkLog(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateWorkLogInput,
+    idempotencyKey: string,
+  ): Promise<WorkLog>;
+  createPartRequirement(
+    shopId: string,
+    repairOrderId: string,
+    input: CreatePartRequirementInput,
+    idempotencyKey: string,
+  ): Promise<PartRequirement>;
+  updatePartRequirement(
+    shopId: string,
+    partRequirementId: string,
+    input: UpdatePartRequirementInput,
+    idempotencyKey: string,
+  ): Promise<PartRequirement>;
+  createPartUsed(
+    shopId: string,
+    repairOrderId: string,
+    input: CreatePartUsedInput,
+    idempotencyKey: string,
+  ): Promise<PartUsed>;
 }
 
 export interface AuthApi {
@@ -387,6 +418,58 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
     const response = await this.request<DataResponse<SendQuoteResult>>(
       `/quotes/${encodeURIComponent(quoteVersionId)}/send`,
       { method: "POST", shopId, idempotencyKey, body: JSON.stringify({ channel }) },
+    );
+    return response.data;
+  }
+
+  async createWorkLog(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateWorkLogInput,
+    idempotencyKey: string,
+  ): Promise<WorkLog> {
+    const response = await this.request<DataResponse<WorkLog>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/work-logs`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async createPartRequirement(
+    shopId: string,
+    repairOrderId: string,
+    input: CreatePartRequirementInput,
+    idempotencyKey: string,
+  ): Promise<PartRequirement> {
+    const response = await this.request<DataResponse<PartRequirement>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/part-requirements`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async updatePartRequirement(
+    shopId: string,
+    partRequirementId: string,
+    input: UpdatePartRequirementInput,
+    idempotencyKey: string,
+  ): Promise<PartRequirement> {
+    const response = await this.request<DataResponse<PartRequirement>>(
+      `/part-requirements/${encodeURIComponent(partRequirementId)}`,
+      { method: "PATCH", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async createPartUsed(
+    shopId: string,
+    repairOrderId: string,
+    input: CreatePartUsedInput,
+    idempotencyKey: string,
+  ): Promise<PartUsed> {
+    const response = await this.request<DataResponse<PartUsed>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/parts-used`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
     );
     return response.data;
   }

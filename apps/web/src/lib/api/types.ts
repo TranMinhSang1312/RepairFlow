@@ -205,15 +205,20 @@ export interface CreateDiagnosisInput {
 }
 
 export type QuoteItemKind = "SERVICE" | "PART" | "FEE";
+export type QuoteQuantityUnit = "EACH" | "HOUR";
 
 export type QuoteStatus =
   "DRAFT" | "SENT" | "ACCEPTED" | "PARTIALLY_ACCEPTED" | "DECLINED" | "EXPIRED" | "SUPERSEDED";
 
 export interface QuoteItem {
   id: string;
+  scopeKey: string;
+  carriedFromQuoteItemId: string | null;
   kind: QuoteItemKind;
   description: string;
+  displayNote: string | null;
   quantity: number;
+  quantityUnit: QuoteQuantityUnit;
   unitPrice: number;
   lineTotal: number;
   isOptional: boolean;
@@ -242,7 +247,10 @@ export interface Quote {
 export interface CreateQuoteItemInput {
   kind: QuoteItemKind;
   description: string;
+  displayNote?: string | null;
+  carriedFromQuoteItemId?: string | null;
   quantity: number;
+  quantityUnit: QuoteQuantityUnit;
   unitPrice: number;
   isOptional: boolean;
   approvalGroup?: string | null;
@@ -263,12 +271,117 @@ export interface SendQuoteResult {
   publicUrl: string;
 }
 
+export interface ApprovedScopeItem {
+  quoteItemId: string;
+  scopeKey: string;
+  kind: QuoteItemKind;
+  description: string;
+  displayNote: string | null;
+  quantity: number;
+  quantityUnit: QuoteQuantityUnit;
+  unitPrice: number;
+  lineTotal: number;
+  isOptional: boolean;
+  approvalGroup: string | null;
+}
+
+export interface ApprovedScopeSummary {
+  quoteVersionId: string;
+  decision: "ACCEPTED" | "PARTIALLY_ACCEPTED";
+  approvedTotal: number;
+  decidedAt: string;
+  items: ApprovedScopeItem[];
+}
+
+export type WorkLogType = "REPAIR" | "TEST" | "CUSTOMER_CONTACT" | "INTERNAL_NOTE" | "CORRECTION";
+export type WorkLogSemanticType = Exclude<WorkLogType, "CORRECTION">;
+
+export interface WorkLog {
+  id: string;
+  repairOrderId: string;
+  quoteItemId: string | null;
+  scopeKey: string | null;
+  type: WorkLogType;
+  effectiveType: WorkLogSemanticType;
+  content: string;
+  supersedesId: string | null;
+  isEffective: boolean;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface CreateWorkLogInput {
+  type: WorkLogType;
+  content: string;
+  quoteItemId?: string | null;
+  supersedesId?: string | null;
+}
+
+export type PartRequirementStatus = "NEEDED" | "ORDERED" | "AVAILABLE" | "CANCELLED";
+
+export interface PartRequirement {
+  id: string;
+  repairOrderId: string;
+  quoteItemId: string;
+  scopeKey: string;
+  nameSnapshot: string;
+  sku: string | null;
+  quantity: number;
+  quantityUnit: QuoteQuantityUnit;
+  status: PartRequirementStatus;
+  lockVersion: number;
+  createdByUserId: string;
+  updatedByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePartRequirementInput {
+  quoteItemId: string;
+  sku?: string | null;
+}
+
+export interface UpdatePartRequirementInput {
+  targetStatus: "ORDERED" | "AVAILABLE";
+  expectedLockVersion: number;
+}
+
+export interface PartUsed {
+  id: string;
+  repairOrderId: string;
+  quoteItemId: string;
+  scopeKey: string;
+  supersedesId: string | null;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  unitCost: number | null;
+  unitSalePrice: number | null;
+  isEffective: boolean;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface CreatePartUsedInput {
+  quoteItemId: string;
+  name: string;
+  sku?: string | null;
+  quantity: number;
+  unitCost?: number | null;
+  unitSalePrice?: number | null;
+  supersedesId?: string | null;
+}
+
 export interface RepairOrderDetail extends RepairOrderSummary {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
   activeAssignment: Assignment | null;
   diagnoses: Diagnosis[];
   quoteVersions: Quote[];
+  approvedScope: ApprovedScopeSummary | null;
+  workLogs: WorkLog[];
+  partRequirements: PartRequirement[];
+  partsUsed: PartUsed[];
   timeline: RepairOrderTimelineEvent[];
 }
 

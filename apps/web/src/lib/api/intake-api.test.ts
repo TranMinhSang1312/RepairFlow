@@ -361,6 +361,7 @@ describe("BrowserIntakeApi", () => {
           kind: "SERVICE",
           description: "Thay linh kiện nguồn",
           quantity: 1,
+          quantityUnit: "EACH",
           unitPrice: 500_000,
           isOptional: false,
           approvalGroup: null,
@@ -377,6 +378,9 @@ describe("BrowserIntakeApi", () => {
       items: [
         {
           id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          scopeKey: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          carriedFromQuoteItemId: null,
+          displayNote: null,
           ...input.items[0]!,
           lineTotal: 500_000,
           approvalGroup: null,
@@ -429,5 +433,65 @@ describe("BrowserIntakeApi", () => {
       "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     );
     expect(JSON.parse(String(sendInit?.body))).toEqual({ channel: "COPY_LINK" });
+  });
+
+  it("maps work, requirement and parts commands to frozen RF-042 routes", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const orderId = "77777777-7777-4777-8777-777777777777";
+    const requirementId = "88888888-8888-4888-8888-888888888888";
+    const quoteItemId = "99999999-9999-4999-8999-999999999999";
+    const keys = [
+      "work-key-123456",
+      "requirement-key-123456",
+      "update-key-123456",
+      "part-key-123456",
+    ];
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "work-log" } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: requirementId } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: requirementId } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "part-used" } }, 201));
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.restoreSession();
+
+    await api.createWorkLog(
+      shopId,
+      orderId,
+      { type: "REPAIR", content: "Đã sửa", quoteItemId },
+      keys[0]!,
+    );
+    await api.createPartRequirement(shopId, orderId, { quoteItemId, sku: "IC-01" }, keys[1]!);
+    await api.updatePartRequirement(
+      shopId,
+      requirementId,
+      { targetStatus: "AVAILABLE", expectedLockVersion: 2 },
+      keys[2]!,
+    );
+    await api.createPartUsed(
+      shopId,
+      orderId,
+      { quoteItemId, name: "IC nguồn", quantity: 1, unitCost: 200_000, unitSalePrice: 500_000 },
+      keys[3]!,
+    );
+
+    expect(fetcher.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      `/api/v1/repair-orders/${orderId}/work-logs`,
+      `/api/v1/repair-orders/${orderId}/part-requirements`,
+      `/api/v1/part-requirements/${requirementId}`,
+      `/api/v1/repair-orders/${orderId}/parts-used`,
+    ]);
+    expect(fetcher.mock.calls.slice(1).map(([, init]) => init?.method)).toEqual([
+      "POST",
+      "POST",
+      "PATCH",
+      "POST",
+    ]);
+    fetcher.mock.calls.slice(1).forEach(([, init], index) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("X-Shop-Id")).toBe(shopId);
+      expect(headers.get("Idempotency-Key")).toBe(keys[index]);
+    });
   });
 });
