@@ -18,6 +18,8 @@ export const Capability = {
   QC_TEMPLATE_READ: "QC_TEMPLATE_READ",
   QC_TEMPLATE_MANAGE: "QC_TEMPLATE_MANAGE",
   QC_RUN_SUBMIT: "QC_RUN_SUBMIT",
+  PAYMENT_CREATE: "PAYMENT_CREATE",
+  HANDOVER_COMPLETE: "HANDOVER_COMPLETE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
@@ -37,6 +39,8 @@ const receptionistCapabilities = new Set<Capability>([
   Capability.QUOTE_DRAFT_WRITE,
   Capability.QUOTE_SEND,
   Capability.QC_TEMPLATE_READ,
+  Capability.PAYMENT_CREATE,
+  Capability.HANDOVER_COMPLETE,
 ]);
 
 export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capability>>> = {
