@@ -14,6 +14,33 @@ export class MediaUploadVerifier {
     if (asset.repairOrderId || !asset.expiresAt || asset.expiresAt <= now) {
       return false;
     }
+    return this.matchesStoredObject(asset);
+  }
+
+  async isCompleteForOrder(
+    asset: MediaAsset,
+    repairOrderId: string,
+    now = new Date(),
+  ): Promise<boolean> {
+    if (
+      asset.repairOrderId !== repairOrderId ||
+      asset.uploadedAt ||
+      !asset.expiresAt ||
+      asset.expiresAt <= now
+    ) {
+      return false;
+    }
+    return this.matchesStoredObject(asset);
+  }
+
+  private async matchesStoredObject(asset: MediaAsset): Promise<boolean> {
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(asset.mimeType) ||
+      asset.byteSize < 1 ||
+      asset.byteSize > 15_000_000
+    ) {
+      return false;
+    }
     const stored = await this.storage.head(asset.objectKey);
     if (!stored) {
       return false;

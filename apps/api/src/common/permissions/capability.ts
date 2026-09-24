@@ -17,6 +17,7 @@ export const Capability = {
   SERVICE_EXECUTION_WRITE: "SERVICE_EXECUTION_WRITE",
   QC_TEMPLATE_READ: "QC_TEMPLATE_READ",
   QC_TEMPLATE_MANAGE: "QC_TEMPLATE_MANAGE",
+  QC_RUN_SUBMIT: "QC_RUN_SUBMIT",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
@@ -47,5 +48,6 @@ export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capa
     Capability.DIAGNOSIS_CREATE,
     Capability.SERVICE_EXECUTION_WRITE,
     Capability.QC_TEMPLATE_READ,
+    Capability.QC_RUN_SUBMIT,
   ]),
 };

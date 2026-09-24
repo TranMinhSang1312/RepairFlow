@@ -163,6 +163,66 @@ export class RepairOrderStateMachineService {
     });
   }
 
+  async advanceAfterQcPass(
+    transaction: TransactionClient,
+    command: InternalRepairOrderTransitionCommand & { evidenceId: string },
+  ) {
+    const qcCommand: RepairOrderTransitionCommand = {
+      ...command,
+      source: RepairOrderTransitionSource.QC_RUN,
+    };
+    await this.repository.lock(transaction, command.shopId, command.repairOrderId);
+    const order = await this.repository.findForTransition(
+      transaction,
+      command.shopId,
+      command.repairOrderId,
+    );
+    if (!order || !this.actorCanSee(order.assignments[0]?.technicianUserId, qcCommand)) {
+      throw this.notFound();
+    }
+    if (order.lockVersion !== command.expectedLockVersion) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        "CONCURRENT_UPDATE",
+        "The repair order was changed by another request.",
+      );
+    }
+    if (
+      order.status !== RepairOrderStatus.QUALITY_CHECK ||
+      command.targetStatus !== RepairOrderStatus.QUALITY_CHECK
+    ) {
+      throw this.guardFailed("A passing QC run can only advance an order in quality check.");
+    }
+    if (
+      command.actor.role !== MembershipRole.OWNER &&
+      command.actor.role !== MembershipRole.TECHNICIAN
+    ) {
+      throw new ApiException(
+        HttpStatus.FORBIDDEN,
+        "PERMISSION_DENIED",
+        "You do not have permission to submit quality control.",
+      );
+    }
+    const latest = order.qcRuns[0];
+    if (!latest || latest.id !== command.evidenceId || latest.result !== QcRunResult.PASS) {
+      throw this.guardFailed("A staged passing QC run is required.");
+    }
+    if (!(await this.repository.incrementLockVersionForQcPass(transaction, qcCommand))) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        "CONCURRENT_UPDATE",
+        "The repair order was changed by another request.",
+      );
+    }
+    const updated = await this.repository.findForTransition(
+      transaction,
+      command.shopId,
+      command.repairOrderId,
+    );
+    if (!updated) throw this.notFound();
+    return updated;
+  }
+
   transitionAfterHandover(
     transaction: TransactionClient,
     command: InternalRepairOrderTransitionCommand & { evidenceId: string },

@@ -32,6 +32,11 @@ import {
   type WorkLogRecord,
   type WorkLogView,
 } from "../service-execution/service-execution.types.js";
+import {
+  toQcRunView,
+  type QcRunRecord,
+  type QcRunView,
+} from "../quality-control/runs/qc-run.types.js";
 
 export interface RepairOrderView {
   id: string;
@@ -96,6 +101,7 @@ export interface RepairOrderDetailView extends RepairOrderView {
   workLogs: WorkLogView[];
   partRequirements: PartRequirementView[];
   partsUsed: PartUsedView[];
+  qcRuns: QcRunView[];
   timeline: OrderEventView[];
 }
 
@@ -219,6 +225,7 @@ export function toRepairOrderDetailView(
     workLogs: WorkLogRecord[];
     partRequirements: PartRequirement[];
     partsUsed: PartUsed[];
+    qcRuns: QcRunRecord[];
   },
 ): RepairOrderDetailView {
   const binding = [...order.quoteVersions]
@@ -241,6 +248,7 @@ export function toRepairOrderDetailView(
     workLogs: toWorkLogViews(order.workLogs),
     partRequirements: order.partRequirements.map(toPartRequirementView),
     partsUsed: toPartUsedViews(order.partsUsed),
+    qcRuns: order.qcRuns.map(toQcRunView),
     timeline: order.events.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),

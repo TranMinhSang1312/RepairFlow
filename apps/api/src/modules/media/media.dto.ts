@@ -2,6 +2,7 @@ import { Transform } from "class-transformer";
 import { MediaPurpose } from "@prisma/client";
 import {
   Equals,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -14,8 +15,8 @@ import {
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim() : value;
 
-export class PresignIntakeMediaDto {
-  @Equals(MediaPurpose.INTAKE)
+export class PresignOrderMediaDto {
+  @IsEnum(MediaPurpose)
   purpose!: MediaPurpose;
 
   @Transform(trim)
@@ -37,4 +38,9 @@ export class PresignIntakeMediaDto {
   @IsString()
   @Matches(/^[a-fA-F0-9]{64}$/)
   checksumSha256?: string | null;
+}
+
+export class PresignIntakeMediaDto extends PresignOrderMediaDto {
+  @Equals(MediaPurpose.INTAKE)
+  declare purpose: MediaPurpose;
 }
