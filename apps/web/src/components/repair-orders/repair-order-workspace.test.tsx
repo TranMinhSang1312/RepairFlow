@@ -84,6 +84,10 @@ const detail: RepairOrderDetail = {
   activeAssignment: null,
   diagnoses: [],
   quoteVersions: [],
+  approvedScope: null,
+  workLogs: [],
+  partRequirements: [],
+  partsUsed: [],
   timeline: [
     {
       id: "e1",
@@ -111,11 +115,44 @@ function fakeApi(overrides: Partial<RepairOrderWorkspaceApi> = {}): RepairOrderW
     createQuote: vi.fn(),
     replaceDraftQuote: vi.fn(),
     sendQuote: vi.fn(),
+    createWorkLog: vi.fn(),
+    createPartRequirement: vi.fn(),
+    updatePartRequirement: vi.fn(),
+    createPartUsed: vi.fn(),
     ...overrides,
   };
 }
 
 describe("RepairOrderWorkspaceScreen", () => {
+  it("restores the Work tab from URL and serializes tab changes without dropping shopId", async () => {
+    const user = userEvent.setup();
+    const replaceUrl = vi.fn();
+    const { rerender } = render(
+      <RepairOrderWorkspaceScreen
+        api={fakeApi()}
+        repairOrderId={orderId}
+        replaceUrl={replaceUrl}
+        search={`shopId=${shopId}&tab=work`}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Hạng mục khách hàng đã duyệt" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("tab", { name: /Báo giá/ }));
+    expect(replaceUrl).toHaveBeenCalledWith(`/orders/${orderId}?shopId=${shopId}&tab=quote`);
+
+    rerender(
+      <RepairOrderWorkspaceScreen
+        api={fakeApi()}
+        repairOrderId={orderId}
+        replaceUrl={replaceUrl}
+        search={`shopId=${shopId}&tab=timeline`}
+      />,
+    );
+    expect(await screen.findByRole("heading", { name: "Dòng thời gian chỉ đọc" })).toBeTruthy();
+  });
+
   it("renders intake evidence and the read-only timeline at 360px", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 360 });
     const user = userEvent.setup();

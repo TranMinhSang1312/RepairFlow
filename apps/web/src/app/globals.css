@@ -14,6 +14,134 @@
   --shadow: 0 18px 55px rgba(25, 55, 38, 0.08);
 }
 
+/* RF-043: authoritative work and parts workspace */
+.work-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  min-width: 0;
+}
+
+.work-section-header,
+.work-history-heading,
+.work-actions,
+.part-history-list > li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.work-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.work-scope-list,
+.work-history-list,
+.part-history-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.work-scope-list > li,
+.work-history-list > li,
+.part-history-list > li {
+  border: 1px solid var(--line, #d9e0dc);
+  border-radius: 0.8rem;
+  padding: 0.9rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.work-scope-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+}
+
+.work-scope-list small,
+.work-history-list small,
+.part-history-list small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--muted, #5e6964);
+}
+
+.work-scope-metrics {
+  display: grid;
+  gap: 0.2rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.history-superseded {
+  opacity: 0.72;
+  background: #f4f6f5;
+}
+
+.work-form-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.status-needed,
+.status-ordered,
+.status-available,
+.status-cancelled {
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+.status-available {
+  background: #dff6e9;
+  color: #12643a;
+}
+.status-cancelled {
+  background: #edf0ee;
+  color: #52605a;
+}
+
+.quote-lineage {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .work-grid,
+  .work-form-row,
+  .work-scope-list > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-section-header,
+  .work-history-heading,
+  .part-history-list > li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .work-scope-metrics {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .work-actions .button {
+    width: 100%;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

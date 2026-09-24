@@ -35,9 +35,13 @@ function quote(overrides: Partial<Quote> = {}): Quote {
     items: [
       {
         id: "55555555-5555-4555-8555-555555555555",
+        scopeKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        carriedFromQuoteItemId: null,
         kind: "SERVICE",
         description: "Kiểm tra và sửa nguồn",
+        displayNote: null,
         quantity: 1,
+        quantityUnit: "EACH",
         unitPrice: 100_000,
         lineTotal: 100_000,
         isOptional: false,
@@ -55,6 +59,22 @@ function quote(overrides: Partial<Quote> = {}): Quote {
     updatedAt: "2026-09-23T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function approvedItemsFrom(value: Quote) {
+  return value.items.map((item) => ({
+    quoteItemId: item.id,
+    scopeKey: item.scopeKey,
+    kind: item.kind,
+    description: item.description,
+    displayNote: item.displayNote,
+    quantity: item.quantity,
+    quantityUnit: item.quantityUnit,
+    unitPrice: item.unitPrice,
+    lineTotal: item.lineTotal,
+    isOptional: item.isOptional,
+    approvalGroup: item.approvalGroup,
+  }));
 }
 
 function detail(quotes: Quote[] = [], status: RepairOrderDetail["status"] = "DIAGNOSING") {
@@ -96,6 +116,10 @@ function detail(quotes: Quote[] = [], status: RepairOrderDetail["status"] = "DIA
     activeAssignment: null,
     diagnoses: [],
     quoteVersions: quotes,
+    approvedScope: null,
+    workLogs: [],
+    partRequirements: [],
+    partsUsed: [],
     timeline: [],
   } as RepairOrderDetail;
 }
@@ -192,7 +216,10 @@ describe("QuotePanel", () => {
         {
           kind: "SERVICE",
           description: "Kiểm tra và sửa nguồn",
+          displayNote: null,
+          carriedFromQuoteItemId: null,
           quantity: 1,
+          quantityUnit: "EACH",
           unitPrice: 100_000,
           isOptional: false,
           approvalGroup: null,
@@ -361,6 +388,94 @@ describe("QuotePanel", () => {
     expect(screen.queryByRole("button", { name: "Lưu bản nháp" })).toBeNull();
     expect(screen.getByRole("button", { name: "Xem lại và gửi" })).toBeTruthy();
     expect(screen.getByText(/bản nháp không thể sửa/)).toBeTruthy();
+  });
+
+  it("carries replacement lineage only after an explicit approved-item selection", async () => {
+    const accepted = quote({ status: "ACCEPTED" });
+    const order = detail([accepted], "REPAIRING");
+    order.approvedScope = {
+      quoteVersionId: accepted.id,
+      decision: "ACCEPTED",
+      approvedTotal: accepted.total,
+      decidedAt: "2026-09-23T01:00:00.000Z",
+      items: approvedItemsFrom(accepted),
+    };
+    const createQuote = vi
+      .fn()
+      .mockImplementation(
+        (
+          _shop: string,
+          _order: string,
+          input: Parameters<RepairOrderWorkspaceApi["createQuote"]>[2],
+        ) =>
+          Promise.resolve(
+            quote({
+              id: quoteTwoId,
+              versionNo: 2,
+              items: input.items.map((item, index) => ({
+                id:
+                  index === 0
+                    ? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                    : "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                scopeKey:
+                  index === 0
+                    ? accepted.items[0]!.scopeKey
+                    : "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                carriedFromQuoteItemId: item.carriedFromQuoteItemId ?? null,
+                displayNote: item.displayNote ?? null,
+                ...item,
+                lineTotal: Math.round(item.quantity * item.unitPrice),
+                approvalGroup: item.approvalGroup ?? null,
+              })),
+            }),
+          ),
+      );
+    setup({ api: fakeApi({ createQuote }), order });
+    const user = userEvent.setup();
+
+    await user.selectOptions(screen.getByLabelText(/^Lineage phạm vi/), accepted.items[0]!.id);
+    await user.click(screen.getByRole("button", { name: "Thêm hạng mục" }));
+    const descriptions = screen.getAllByLabelText("Mô tả");
+    await user.type(descriptions[1]!, "Hạng mục mới hoàn toàn");
+    const prices = screen.getAllByLabelText("Đơn giá (VND)");
+    await user.clear(prices[0]!);
+    await user.type(prices[0]!, "120000");
+    await user.clear(prices[1]!);
+    await user.type(prices[1]!, "50000");
+    await user.click(screen.getByRole("button", { name: "Tạo bản nháp" }));
+
+    await waitFor(() => expect(createQuote).toHaveBeenCalledOnce());
+    const submitted = createQuote.mock.calls[0]![2];
+    expect(submitted.items[0]).toMatchObject({
+      carriedFromQuoteItemId: accepted.items[0]!.id,
+      description: accepted.items[0]!.description,
+      quantityUnit: accepted.items[0]!.quantityUnit,
+    });
+    expect(submitted.items[1]!.carriedFromQuoteItemId).toBeNull();
+  });
+
+  it("blocks duplicated carried lineage instead of matching items by editable text or price", async () => {
+    const accepted = quote({ status: "ACCEPTED" });
+    const order = detail([accepted], "REPAIRING");
+    order.approvedScope = {
+      quoteVersionId: accepted.id,
+      decision: "ACCEPTED",
+      approvedTotal: accepted.total,
+      decidedAt: "2026-09-23T01:00:00.000Z",
+      items: approvedItemsFrom(accepted),
+    };
+    const createQuote = vi.fn();
+    setup({ api: fakeApi({ createQuote }), order });
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/^Lineage phạm vi/), accepted.items[0]!.id);
+    await user.click(screen.getByRole("button", { name: "Thêm hạng mục" }));
+    await user.selectOptions(
+      screen.getAllByLabelText(/^Lineage phạm vi/)[1]!,
+      accepted.items[0]!.id,
+    );
+    await user.click(screen.getByRole("button", { name: "Tạo bản nháp" }));
+    expect(screen.getByText("Một hạng mục nguồn chỉ được mang sang một lần.")).toBeTruthy();
+    expect(createQuote).not.toHaveBeenCalled();
   });
 
   it("keeps the staff quote editor labelled and usable at 360px", async () => {

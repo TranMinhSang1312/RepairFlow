@@ -15,11 +15,16 @@ import type {
   RepairOrderStatus,
 } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-provider";
+import {
+  parseWorkspaceTab,
+  workspaceTabUrl,
+  type WorkspaceTab,
+} from "@/lib/repair-orders/workspace-tabs";
 import { DiagnosisPanel } from "./diagnosis-panel";
 import { QuotePanel } from "./quote-panel";
 import { RepairOrderActions } from "./repair-order-actions";
+import { WorkPanel } from "./work-panel";
 
-type WorkspaceTab = "overview" | "diagnosis" | "quote" | "timeline";
 type LoadState = "loading" | "success" | "error";
 
 const STATUS_LABELS: Readonly<Record<RepairOrderStatus, string>> = {
@@ -88,7 +93,7 @@ export function RepairOrderWorkspaceScreen({
   const [error, setError] = useState("");
   const [staleWarning, setStaleWarning] = useState(false);
   const [technicians, setTechnicians] = useState<ActiveTechnician[]>([]);
-  const [tab, setTab] = useState<WorkspaceTab>("overview");
+  const [tab, setTab] = useState<WorkspaceTab>(() => parseWorkspaceTab(params));
   const initialShopId = useState(() => params.get("shopId"))[0];
   const sharedSessionInitialized = useRef(false);
   const latestRequest = useRef(0);
@@ -144,6 +149,10 @@ export function RepairOrderWorkspaceScreen({
       setShopId(requestedShop);
     }
   }, [auth, params, shopId]);
+
+  useEffect(() => {
+    setTab(parseWorkspaceTab(params));
+  }, [params]);
 
   const memberships = auth ? activeMemberships(auth) : [];
   const membership = memberships.find((item) => item.shopId === shopId);
@@ -201,6 +210,11 @@ export function RepairOrderWorkspaceScreen({
     const next = new URLSearchParams(params);
     next.set("shopId", nextShopId);
     replaceUrl(`/orders/${encodeURIComponent(repairOrderId)}?${next.toString()}`);
+  }
+
+  function changeTab(nextTab: WorkspaceTab) {
+    setTab(nextTab);
+    replaceUrl(workspaceTabUrl(repairOrderId, params, nextTab));
   }
 
   if (loadState === "loading") {
@@ -282,7 +296,7 @@ export function RepairOrderWorkspaceScreen({
         <button
           aria-controls="overview-panel"
           aria-selected={tab === "overview"}
-          onClick={() => setTab("overview")}
+          onClick={() => changeTab("overview")}
           role="tab"
           type="button"
         >
@@ -291,7 +305,7 @@ export function RepairOrderWorkspaceScreen({
         <button
           aria-controls="diagnosis-panel"
           aria-selected={tab === "diagnosis"}
-          onClick={() => setTab("diagnosis")}
+          onClick={() => changeTab("diagnosis")}
           role="tab"
           type="button"
         >
@@ -300,16 +314,25 @@ export function RepairOrderWorkspaceScreen({
         <button
           aria-controls="quote-panel"
           aria-selected={tab === "quote"}
-          onClick={() => setTab("quote")}
+          onClick={() => changeTab("quote")}
           role="tab"
           type="button"
         >
           Báo giá <span>{order.quoteVersions.length}</span>
         </button>
         <button
+          aria-controls="work-panel"
+          aria-selected={tab === "work"}
+          onClick={() => changeTab("work")}
+          role="tab"
+          type="button"
+        >
+          Công việc <span>{order.workLogs.length + order.partsUsed.length}</span>
+        </button>
+        <button
           aria-controls="timeline-panel"
           aria-selected={tab === "timeline"}
-          onClick={() => setTab("timeline")}
+          onClick={() => changeTab("timeline")}
           role="tab"
           type="button"
         >
@@ -471,6 +494,20 @@ export function RepairOrderWorkspaceScreen({
           order={order}
           shopId={shopId}
         />
+      )}
+
+      {tab === "work" && (
+        <div id="work-panel" role="tabpanel">
+          <WorkPanel
+            api={api}
+            membership={membership}
+            onNavigateQuote={() => changeTab("quote")}
+            onReload={() => loadWorkspace(true)}
+            order={order}
+            shopId={shopId}
+            userId={auth.user.id}
+          />
+        </div>
       )}
 
       {tab === "timeline" && (

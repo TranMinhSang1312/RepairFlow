@@ -9,6 +9,7 @@ import type {
   Membership,
   Quote,
   QuoteItemKind,
+  QuoteQuantityUnit,
   QuoteSendChannel,
   RepairOrderDetail,
 } from "@/lib/api/types";
@@ -25,7 +26,10 @@ interface EditableQuoteItem {
   clientId: string;
   kind: QuoteItemKind;
   description: string;
+  displayNote: string;
+  carriedFromQuoteItemId: string;
   quantity: string;
+  quantityUnit: QuoteQuantityUnit;
   unitPrice: string;
   isOptional: boolean;
   approvalGroup: string;
@@ -73,7 +77,10 @@ function newItem(): EditableQuoteItem {
     clientId: newClientId(),
     kind: "SERVICE",
     description: "",
+    displayNote: "",
+    carriedFromQuoteItemId: "",
     quantity: "1",
+    quantityUnit: "EACH",
     unitPrice: "0",
     isOptional: false,
     approvalGroup: "",
@@ -107,7 +114,10 @@ function formFromQuote(quote?: Quote): QuoteFormState {
       clientId: item.id,
       kind: item.kind,
       description: item.description,
+      displayNote: item.displayNote ?? "",
+      carriedFromQuoteItemId: item.carriedFromQuoteItemId ?? "",
       quantity: String(item.quantity),
+      quantityUnit: item.quantityUnit,
       unitPrice: String(item.unitPrice),
       isOptional: item.isOptional,
       approvalGroup: item.approvalGroup ?? "",
@@ -175,7 +185,10 @@ function toInput(form: QuoteFormState): CreateQuoteInput {
     items: form.items.map((item) => ({
       kind: item.kind,
       description: item.description.trim(),
+      displayNote: item.displayNote.trim() || null,
+      carriedFromQuoteItemId: item.carriedFromQuoteItemId || null,
       quantity: Number(item.quantity),
+      quantityUnit: item.quantityUnit,
       unitPrice: Number(item.unitPrice),
       isOptional: item.isOptional,
       approvalGroup: item.isOptional ? item.approvalGroup.trim() || null : null,
@@ -265,6 +278,7 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
         : highestDraft;
   const clientPreview = useMemo(() => previewFor(form), [form]);
   const preview = authoritativePreview ?? clientPreview;
+  const lineageCandidates = order.status === "REPAIRING" ? (order.approvedScope?.items ?? []) : [];
   const displayQuotes = useMemo(() => {
     const replaced = savedQuote
       ? quoteVersions.map((quote) => (quote.id === savedQuote.id ? savedQuote : quote))
@@ -310,6 +324,7 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
 
   function validate(): boolean {
     const next: Record<string, string> = {};
+    const usedLineage = new Set<string>();
     if (form.items.length === 0) next.items = "Báo giá cần ít nhất một hạng mục.";
     if (form.items.length > 100) next.items = "Báo giá có tối đa 100 hạng mục.";
 
@@ -318,6 +333,9 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
         next[`items.${index}.description`] = "Vui lòng nhập mô tả hạng mục.";
       } else if (item.description.trim().length > 500) {
         next[`items.${index}.description`] = "Mô tả tối đa 500 ký tự.";
+      }
+      if (item.displayNote.length > 1000) {
+        next[`items.${index}.displayNote`] = "Ghi chú hiển thị tối đa 1.000 ký tự.";
       }
       if (
         !/^\d+(?:\.\d{1,2})?$/.test(item.quantity) ||
@@ -332,6 +350,35 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
       }
       if (item.approvalGroup.trim().length > 80) {
         next[`items.${index}.approvalGroup`] = "Nhóm duyệt tối đa 80 ký tự.";
+      }
+      if (item.carriedFromQuoteItemId) {
+        const prior = lineageCandidates.find(
+          (candidate) => candidate.quoteItemId === item.carriedFromQuoteItemId,
+        );
+        if (!prior) {
+          next[`items.${index}.carriedFromQuoteItemId`] =
+            "Lineage không thuộc phạm vi đang được duyệt.";
+        } else if (usedLineage.has(prior.quoteItemId)) {
+          next[`items.${index}.carriedFromQuoteItemId`] =
+            "Một hạng mục nguồn chỉ được mang sang một lần.";
+        } else {
+          const normalize = (value: string) =>
+            value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase("vi");
+          const priorGroup = prior.approvalGroup ? normalize(prior.approvalGroup) : null;
+          const currentGroup = item.approvalGroup.trim() ? normalize(item.approvalGroup) : null;
+          if (
+            prior.kind !== item.kind ||
+            normalize(prior.description) !== normalize(item.description) ||
+            prior.quantity !== Number(item.quantity) ||
+            prior.quantityUnit !== item.quantityUnit ||
+            prior.isOptional !== item.isOptional ||
+            priorGroup !== currentGroup
+          ) {
+            next[`items.${index}.carriedFromQuoteItemId`] =
+              "Hạng mục mang sang phải giữ nguyên loại, mô tả, số lượng, đơn vị, tùy chọn và nhóm duyệt.";
+          }
+          usedLineage.add(prior.quoteItemId);
+        }
       }
     });
 
@@ -486,6 +533,12 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
                           {KIND_LABELS[item.kind]} · {item.isOptional ? "Tùy chọn" : "Bắt buộc"}
                           {item.approvalGroup ? ` · Nhóm ${item.approvalGroup}` : ""}
                         </small>
+                        <small>
+                          Scope {item.scopeKey}
+                          {item.carriedFromQuoteItemId
+                            ? ` · mang từ ${item.carriedFromQuoteItemId}`
+                            : " · phạm vi mới, không mang bằng chứng cũ"}
+                        </small>
                       </div>
                       <span>
                         {item.quantity} × {money(item.unitPrice)} = {money(item.lineTotal)}
@@ -564,6 +617,58 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
               {form.items.map((item, index) => (
                 <fieldset className="quote-item-editor" key={item.clientId}>
                   <legend>Hạng mục {index + 1}</legend>
+                  {order.status === "REPAIRING" && (
+                    <label
+                      className="field quote-lineage"
+                      htmlFor={`quote-lineage-${item.clientId}`}
+                    >
+                      <span>Lineage phạm vi</span>
+                      <select
+                        aria-describedby={
+                          fieldErrors[`items.${index}.carriedFromQuoteItemId`]
+                            ? `quote-lineage-${item.clientId}-error`
+                            : undefined
+                        }
+                        id={`quote-lineage-${item.clientId}`}
+                        onChange={(event) => {
+                          const prior = lineageCandidates.find(
+                            (candidate) => candidate.quoteItemId === event.target.value,
+                          );
+                          updateItem(
+                            index,
+                            prior
+                              ? {
+                                  carriedFromQuoteItemId: prior.quoteItemId,
+                                  kind: prior.kind,
+                                  description: prior.description,
+                                  quantity: String(prior.quantity),
+                                  quantityUnit: prior.quantityUnit,
+                                  isOptional: prior.isOptional,
+                                  approvalGroup: prior.approvalGroup ?? "",
+                                }
+                              : { carriedFromQuoteItemId: "" },
+                          );
+                        }}
+                        value={item.carriedFromQuoteItemId}
+                      >
+                        <option value="">Hạng mục mới — không mang bằng chứng cũ</option>
+                        {lineageCandidates.map((candidate) => (
+                          <option key={candidate.quoteItemId} value={candidate.quoteItemId}>
+                            Mang từ {candidate.description} · {candidate.scopeKey.slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
+                      {fieldErrors[`items.${index}.carriedFromQuoteItemId`] && (
+                        <small className="field-error" id={`quote-lineage-${item.clientId}-error`}>
+                          {fieldErrors[`items.${index}.carriedFromQuoteItemId`]}
+                        </small>
+                      )}
+                      <small>
+                        Chỉ lựa chọn tường minh này mới yêu cầu máy chủ giữ lineage; hệ thống không
+                        ghép theo chữ hoặc giá.
+                      </small>
+                    </label>
+                  )}
                   <label className="field" htmlFor={`quote-kind-${item.clientId}`}>
                     <span>Loại</span>
                     <select
@@ -579,6 +684,24 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label
+                    className="field quote-description"
+                    htmlFor={`quote-display-note-${item.clientId}`}
+                  >
+                    <span>Ghi chú hiển thị (không ràng buộc lineage)</span>
+                    <textarea
+                      id={`quote-display-note-${item.clientId}`}
+                      maxLength={1000}
+                      onChange={(event) => updateItem(index, { displayNote: event.target.value })}
+                      rows={2}
+                      value={item.displayNote}
+                    />
+                    {fieldErrors[`items.${index}.displayNote`] && (
+                      <small className="field-error">
+                        {fieldErrors[`items.${index}.displayNote`]}
+                      </small>
+                    )}
                   </label>
                   <label
                     className="field quote-description"
@@ -648,6 +771,19 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
                         {fieldErrors[`items.${index}.unitPrice`]}
                       </small>
                     )}
+                  </label>
+                  <label className="field" htmlFor={`quote-unit-${item.clientId}`}>
+                    <span>Đơn vị số lượng</span>
+                    <select
+                      id={`quote-unit-${item.clientId}`}
+                      onChange={(event) =>
+                        updateItem(index, { quantityUnit: event.target.value as QuoteQuantityUnit })
+                      }
+                      value={item.quantityUnit}
+                    >
+                      <option value="EACH">Đơn vị</option>
+                      <option value="HOUR">Giờ</option>
+                    </select>
                   </label>
                   <label className="quote-optional-control">
                     <input
