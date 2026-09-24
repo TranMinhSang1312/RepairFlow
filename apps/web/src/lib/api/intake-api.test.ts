@@ -494,4 +494,106 @@ describe("BrowserIntakeApi", () => {
       expect(headers.get("Idempotency-Key")).toBe(keys[index]);
     });
   });
+
+  it("maps QC templates, evidence upload, and run submission to the frozen RF-046 contract", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const orderId = "77777777-7777-4777-8777-777777777777";
+    const templateId = "88888888-8888-4888-8888-888888888888";
+    const itemId = "99999999-9999-4999-8999-999999999999";
+    const mediaId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const template = {
+      id: templateId,
+      name: "Kiểm tra bàn giao",
+      versionNo: 2,
+      isActive: true,
+      items: [{ id: itemId, label: "Khởi động", isRequired: true, allowNa: false, sortOrder: 1 }],
+      createdAt: "2026-09-24T00:00:00.000Z",
+    };
+    const input = {
+      qcTemplateId: templateId,
+      expectedLockVersion: 7,
+      notes: null,
+      results: [
+        {
+          qcTemplateItemId: itemId,
+          result: "PASS" as const,
+          note: null,
+          evidenceMediaAssetIds: [mediaId],
+        },
+      ],
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse({ data: [template] }))
+      .mockResolvedValueOnce(jsonResponse({ data: template }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: { ...template, isActive: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              mediaAssetId: mediaId,
+              uploadUrl: "https://storage.test/qc",
+              expiresAt: "2026-09-24T01:00:00.000Z",
+            },
+          },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              run: { id: "run", runNo: 1, result: "PASS" },
+              orderStatus: "QUALITY_CHECK",
+              orderLockVersion: 8,
+            },
+          },
+          201,
+        ),
+      );
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    await api.restoreSession();
+
+    await api.listQcTemplates(shopId, true);
+    await api.createQcTemplate(
+      shopId,
+      {
+        name: template.name,
+        items: template.items.map(({ label, isRequired, allowNa, sortOrder }) => ({
+          label,
+          isRequired,
+          allowNa,
+          sortOrder,
+        })),
+      },
+      "qc-template-create-key",
+    );
+    await api.deactivateQcTemplate(shopId, templateId, "qc-template-deactivate-key");
+    await api.uploadQcEvidence(
+      shopId,
+      orderId,
+      new File(["photo"], "qc.jpg", { type: "image/jpeg" }),
+    );
+    await api.submitQcRun(shopId, orderId, input, "qc-run-key");
+
+    expect(fetcher.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      "/api/v1/qc-templates?includeInactive=true",
+      "/api/v1/qc-templates",
+      `/api/v1/qc-templates/${templateId}/deactivate`,
+      `/api/v1/repair-orders/${orderId}/media/presign`,
+      "https://storage.test/qc",
+      `/api/v1/repair-orders/${orderId}/qc-runs`,
+    ]);
+    expect(JSON.parse(String(fetcher.mock.calls[4]![1]?.body))).toMatchObject({
+      purpose: "QC",
+      originalName: "qc.jpg",
+      mimeType: "image/jpeg",
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[6]![1]?.body))).toEqual(input);
+    expect(new Headers(fetcher.mock.calls[6]![1]?.headers).get("Idempotency-Key")).toBe(
+      "qc-run-key",
+    );
+  });
 });

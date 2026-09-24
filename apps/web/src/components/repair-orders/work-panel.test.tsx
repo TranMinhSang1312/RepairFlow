@@ -143,6 +143,7 @@ function detail(overrides: Partial<RepairOrderDetail> = {}): RepairOrderDetail {
     workLogs: [],
     partRequirements: [],
     partsUsed: [],
+    qcRuns: [],
     timeline: [],
     ...overrides,
   };

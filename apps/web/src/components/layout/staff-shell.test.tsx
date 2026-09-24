@@ -60,4 +60,51 @@ describe("ProtectedStaffLayout", () => {
     expect(screen.queryByText("tenant API screen")).toBeNull();
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeTruthy();
   });
+
+  it("shows QC settings only to the active shop owner and preserves shopId", () => {
+    authState = {
+      status: "authenticated",
+      user: {
+        displayName: "Owner",
+        memberships: [
+          {
+            shopId: "shop-one",
+            shopName: "Shop One",
+            role: "OWNER",
+            status: "ACTIVE",
+          },
+        ],
+      },
+      logout: vi.fn(),
+    };
+    const { rerender } = render(
+      <ProtectedStaffLayout>
+        <div>content</div>
+      </ProtectedStaffLayout>,
+    );
+    expect(screen.getByRole("link", { name: "Mẫu QC" }).getAttribute("href")).toBe(
+      "/settings/qc?shopId=shop-one",
+    );
+
+    authState = {
+      ...authState,
+      user: {
+        displayName: "Receptionist",
+        memberships: [
+          {
+            shopId: "shop-one",
+            shopName: "Shop One",
+            role: "RECEPTIONIST",
+            status: "ACTIVE",
+          },
+        ],
+      },
+    };
+    rerender(
+      <ProtectedStaffLayout>
+        <div>content</div>
+      </ProtectedStaffLayout>,
+    );
+    expect(screen.queryByRole("link", { name: "Mẫu QC" })).toBeNull();
+  });
 });

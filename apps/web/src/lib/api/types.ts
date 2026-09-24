@@ -372,6 +372,81 @@ export interface CreatePartUsedInput {
   supersedesId?: string | null;
 }
 
+export type QcItemResult = "PASS" | "FAIL" | "NOT_APPLICABLE";
+export type QcRunResult = "PASS" | "FAIL";
+
+export interface QcTemplateItem {
+  id: string;
+  label: string;
+  isRequired: boolean;
+  allowNa: boolean;
+  sortOrder: number;
+}
+
+export interface QcTemplate {
+  id: string;
+  name: string;
+  versionNo: number;
+  isActive: boolean;
+  items: QcTemplateItem[];
+  createdAt: string;
+}
+
+export interface CreateQcTemplateItemInput {
+  label: string;
+  isRequired: boolean;
+  allowNa: boolean;
+  sortOrder: number;
+}
+
+export interface CreateQcTemplateInput {
+  name: string;
+  items: CreateQcTemplateItemInput[];
+}
+
+export interface QcResult {
+  id: string;
+  qcTemplateItemId: string;
+  labelSnapshot: string;
+  result: QcItemResult;
+  note: string | null;
+  evidenceMediaAssetIds: string[];
+}
+
+export interface QcRun {
+  id: string;
+  repairOrderId: string;
+  qcTemplateId: string;
+  templateName: string;
+  templateVersionNo: number;
+  runNo: number;
+  result: QcRunResult;
+  notes: string | null;
+  results: QcResult[];
+  checkedByUserId: string;
+  createdAt: string;
+}
+
+export interface CreateQcRunResultInput {
+  qcTemplateItemId: string;
+  result: QcItemResult;
+  note?: string | null;
+  evidenceMediaAssetIds: string[];
+}
+
+export interface CreateQcRunInput {
+  qcTemplateId: string;
+  expectedLockVersion: number;
+  notes?: string | null;
+  results: CreateQcRunResultInput[];
+}
+
+export interface QcRunSubmissionResult {
+  run: QcRun;
+  orderStatus: RepairOrderStatus;
+  orderLockVersion: number;
+}
+
 export interface RepairOrderDetail extends RepairOrderSummary {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
@@ -382,6 +457,7 @@ export interface RepairOrderDetail extends RepairOrderSummary {
   workLogs: WorkLog[];
   partRequirements: PartRequirement[];
   partsUsed: PartUsed[];
+  qcRuns: QcRun[];
   timeline: RepairOrderTimelineEvent[];
 }
 

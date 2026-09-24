@@ -109,6 +109,14 @@ export function ProtectedStaffLayout({ children }: { children: ReactNode }) {
               Tiếp nhận
             </Link>
           )}
+          {membership.role === "OWNER" && (
+            <Link
+              aria-current={pathname.startsWith("/settings/qc") ? "page" : undefined}
+              href={`/settings/qc?shopId=${encodeURIComponent(membership.shopId)}`}
+            >
+              Mẫu QC
+            </Link>
+          )}
         </nav>
         <div className="staff-account">
           <div>

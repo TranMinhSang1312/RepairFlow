@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -88,6 +88,7 @@ const detail: RepairOrderDetail = {
   workLogs: [],
   partRequirements: [],
   partsUsed: [],
+  qcRuns: [],
   timeline: [
     {
       id: "e1",
@@ -119,12 +120,17 @@ function fakeApi(overrides: Partial<RepairOrderWorkspaceApi> = {}): RepairOrderW
     createPartRequirement: vi.fn(),
     updatePartRequirement: vi.fn(),
     createPartUsed: vi.fn(),
+    listQcTemplates: vi.fn().mockResolvedValue([]),
+    createQcTemplate: vi.fn(),
+    deactivateQcTemplate: vi.fn(),
+    uploadQcEvidence: vi.fn(),
+    submitQcRun: vi.fn(),
     ...overrides,
   };
 }
 
 describe("RepairOrderWorkspaceScreen", () => {
-  it("restores the Work tab from URL and serializes tab changes without dropping shopId", async () => {
+  it("restores Work and QC tabs from URL and serializes changes without dropping shopId", async () => {
     const user = userEvent.setup();
     const replaceUrl = vi.fn();
     const { rerender } = render(
@@ -139,8 +145,20 @@ describe("RepairOrderWorkspaceScreen", () => {
     expect(
       await screen.findByRole("heading", { name: "Hạng mục khách hàng đã duyệt" }),
     ).toBeTruthy();
-    await user.click(screen.getByRole("tab", { name: /Báo giá/ }));
-    expect(replaceUrl).toHaveBeenCalledWith(`/orders/${orderId}?shopId=${shopId}&tab=quote`);
+    await user.click(screen.getByRole("tab", { name: /^QC/ }));
+    expect(replaceUrl).toHaveBeenCalledWith(`/orders/${orderId}?shopId=${shopId}&tab=qc`);
+
+    rerender(
+      <RepairOrderWorkspaceScreen
+        api={fakeApi()}
+        repairOrderId={orderId}
+        replaceUrl={replaceUrl}
+        search={`shopId=${shopId}&tab=qc`}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Các lần kiểm tra chất lượng" }),
+    ).toBeTruthy();
 
     rerender(
       <RepairOrderWorkspaceScreen
@@ -530,5 +548,92 @@ describe("RepairOrderWorkspaceScreen", () => {
     ).toBeTruthy();
     expect(screen.getByText("Máy không lên nguồn")).toBeTruthy();
     await waitFor(() => expect(getOrder.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("ignores an older poll snapshot after a QC submission advances runNo and lockVersion", async () => {
+    let releaseOldSnapshot!: (value: RepairOrderDetail) => void;
+    const oldSnapshot = new Promise<RepairOrderDetail>((resolve) => {
+      releaseOldSnapshot = resolve;
+    });
+    const template = {
+      id: "88888888-8888-4888-8888-888888888888",
+      name: "Kiểm tra cuối",
+      versionNo: 1,
+      isActive: true,
+      createdAt: "2026-09-24T01:00:00.000Z",
+      items: [
+        {
+          id: "99999999-9999-4999-8999-999999999999",
+          label: "Khởi động ổn định",
+          isRequired: true,
+          allowNa: false,
+          sortOrder: 1,
+        },
+      ],
+    };
+    const qualityCheck = {
+      ...detail,
+      status: "QUALITY_CHECK" as const,
+      lockVersion: 7,
+    };
+    const acceptedRun = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      repairOrderId: orderId,
+      qcTemplateId: template.id,
+      templateName: template.name,
+      templateVersionNo: 1,
+      runNo: 1,
+      result: "PASS" as const,
+      notes: null,
+      results: [
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          qcTemplateItemId: template.items[0]!.id,
+          labelSnapshot: template.items[0]!.label,
+          result: "PASS" as const,
+          note: null,
+          evidenceMediaAssetIds: [],
+        },
+      ],
+      checkedByUserId: auth.user.id,
+      createdAt: "2026-09-24T02:00:00.000Z",
+    };
+    const getRepairOrder = vi
+      .fn<RepairOrderWorkspaceApi["getRepairOrder"]>()
+      .mockResolvedValueOnce(qualityCheck)
+      .mockImplementation(() => oldSnapshot);
+    const api = fakeApi({
+      getRepairOrder,
+      listQcTemplates: vi.fn().mockResolvedValue([template]),
+      submitQcRun: vi.fn().mockResolvedValue({
+        run: acceptedRun,
+        orderStatus: "QUALITY_CHECK",
+        orderLockVersion: 8,
+      }),
+    });
+    const user = userEvent.setup();
+    render(
+      <RepairOrderWorkspaceScreen
+        api={api}
+        pollIntervalMs={15}
+        repairOrderId={orderId}
+        search={`shopId=${shopId}&tab=qc`}
+        sessionUser={{
+          ...auth.user,
+          memberships: [{ ...auth.user.memberships[0]!, role: "OWNER" as const }],
+        }}
+      />,
+    );
+
+    const checklist = await screen.findByRole("group", { name: /Khởi động ổn định/ });
+    await waitFor(() => expect(getRepairOrder.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await user.click(within(checklist).getByLabelText("Đạt"));
+    await user.click(screen.getByRole("button", { name: "Xem lại checklist" }));
+    await user.click(await screen.findByRole("button", { name: "Gửi QC bất biến" }));
+    expect(await screen.findByText(/Máy chủ ghi nhận QC lần 1 đạt/)).toBeTruthy();
+
+    await act(async () => releaseOldSnapshot(qualityCheck));
+    await waitFor(() => expect(screen.getByText(/Lần 1 · Kiểm tra cuối v1/)).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Đánh dấu sẵn sàng trả máy" })).toBeTruthy();
   });
 });

@@ -30,6 +30,11 @@ import type {
   PartRequirement,
   CreatePartUsedInput,
   PartUsed,
+  CompletionOutcome,
+  CreateQcRunInput,
+  CreateQcTemplateInput,
+  QcRunSubmissionResult,
+  QcTemplate,
 } from "./types";
 
 interface DataResponse<T> {
@@ -82,7 +87,12 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
   transitionRepairOrder(
     shopId: string,
     repairOrderId: string,
-    input: { targetStatus: RepairOrderStatus; expectedLockVersion: number },
+    input: {
+      targetStatus: RepairOrderStatus;
+      expectedLockVersion: number;
+      completionOutcome?: CompletionOutcome | null;
+      reason?: string | null;
+    },
     idempotencyKey: string,
   ): Promise<RepairOrderSummary>;
   createDiagnosis(
@@ -126,6 +136,29 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
     input: CreatePartUsedInput,
     idempotencyKey: string,
   ): Promise<PartUsed>;
+  listQcTemplates(shopId: string, includeInactive?: boolean): Promise<QcTemplate[]>;
+  createQcTemplate(
+    shopId: string,
+    input: CreateQcTemplateInput,
+    idempotencyKey: string,
+  ): Promise<QcTemplate>;
+  deactivateQcTemplate(
+    shopId: string,
+    qcTemplateId: string,
+    idempotencyKey: string,
+  ): Promise<QcTemplate>;
+  uploadQcEvidence(
+    shopId: string,
+    repairOrderId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string>;
+  submitQcRun(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateQcRunInput,
+    idempotencyKey: string,
+  ): Promise<QcRunSubmissionResult>;
 }
 
 export interface AuthApi {
@@ -363,7 +396,12 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
   async transitionRepairOrder(
     shopId: string,
     repairOrderId: string,
-    input: { targetStatus: RepairOrderStatus; expectedLockVersion: number },
+    input: {
+      targetStatus: RepairOrderStatus;
+      expectedLockVersion: number;
+      completionOutcome?: CompletionOutcome | null;
+      reason?: string | null;
+    },
     idempotencyKey: string,
   ): Promise<RepairOrderSummary> {
     const response = await this.request<DataResponse<RepairOrderSummary>>(
@@ -469,6 +507,99 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
   ): Promise<PartUsed> {
     const response = await this.request<DataResponse<PartUsed>>(
       `/repair-orders/${encodeURIComponent(repairOrderId)}/parts-used`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async listQcTemplates(shopId: string, includeInactive = false): Promise<QcTemplate[]> {
+    const suffix = includeInactive ? "?includeInactive=true" : "";
+    const response = await this.request<DataResponse<QcTemplate[]>>(`/qc-templates${suffix}`, {
+      shopId,
+    });
+    return response.data;
+  }
+
+  async createQcTemplate(
+    shopId: string,
+    input: CreateQcTemplateInput,
+    idempotencyKey: string,
+  ): Promise<QcTemplate> {
+    const response = await this.request<DataResponse<QcTemplate>>("/qc-templates", {
+      method: "POST",
+      shopId,
+      idempotencyKey,
+      body: JSON.stringify(input),
+    });
+    return response.data;
+  }
+
+  async deactivateQcTemplate(
+    shopId: string,
+    qcTemplateId: string,
+    idempotencyKey: string,
+  ): Promise<QcTemplate> {
+    const response = await this.request<DataResponse<QcTemplate>>(
+      `/qc-templates/${encodeURIComponent(qcTemplateId)}/deactivate`,
+      { method: "POST", shopId, idempotencyKey },
+    );
+    return response.data;
+  }
+
+  async uploadQcEvidence(
+    shopId: string,
+    repairOrderId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string> {
+    onProgress?.({ stage: "presigning" });
+    const presigned = await this.request<
+      DataResponse<{ mediaAssetId: string; uploadUrl: string; expiresAt: string }>
+    >(`/repair-orders/${encodeURIComponent(repairOrderId)}/media/presign`, {
+      method: "POST",
+      shopId,
+      body: JSON.stringify({
+        purpose: "QC",
+        originalName: file.name,
+        mimeType: file.type,
+        byteSize: file.size,
+      }),
+    });
+
+    onProgress?.({ stage: "uploading" });
+    let upload: Response;
+    try {
+      upload = await this.fetcher.call(globalThis, presigned.data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+    } catch {
+      throw new RepairFlowApiError(
+        0,
+        "MEDIA_UPLOAD_FAILED",
+        "Không thể tải bằng chứng QC. Hãy kiểm tra kết nối và thử lại.",
+      );
+    }
+    if (!upload.ok) {
+      throw new RepairFlowApiError(
+        upload.status,
+        "MEDIA_UPLOAD_FAILED",
+        "Không thể tải bằng chứng QC. Hãy thử lại trước khi gửi checklist.",
+      );
+    }
+    onProgress?.({ stage: "complete" });
+    return presigned.data.mediaAssetId;
+  }
+
+  async submitQcRun(
+    shopId: string,
+    repairOrderId: string,
+    input: CreateQcRunInput,
+    idempotencyKey: string,
+  ): Promise<QcRunSubmissionResult> {
+    const response = await this.request<DataResponse<QcRunSubmissionResult>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/qc-runs`,
       { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
     );
     return response.data;

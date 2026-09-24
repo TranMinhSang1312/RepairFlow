@@ -21,6 +21,7 @@ import {
   type WorkspaceTab,
 } from "@/lib/repair-orders/workspace-tabs";
 import { DiagnosisPanel } from "./diagnosis-panel";
+import { QcPanel } from "./qc-panel";
 import { QuotePanel } from "./quote-panel";
 import { RepairOrderActions } from "./repair-order-actions";
 import { WorkPanel } from "./work-panel";
@@ -158,6 +159,23 @@ export function RepairOrderWorkspaceScreen({
   const membership = memberships.find((item) => item.shopId === shopId);
   const canManageAssignments = membership?.role === "OWNER" || membership?.role === "RECEPTIONIST";
 
+  const applyOrderSnapshot = useCallback((nextOrder: RepairOrderDetail): boolean => {
+    const current = orderRef.current;
+    if (current?.id === nextOrder.id) {
+      const currentRunNo = current.qcRuns.reduce((latest, run) => Math.max(latest, run.runNo), 0);
+      const nextRunNo = nextOrder.qcRuns.reduce((latest, run) => Math.max(latest, run.runNo), 0);
+      if (
+        nextOrder.lockVersion < current.lockVersion ||
+        (nextOrder.lockVersion === current.lockVersion && nextRunNo < currentRunNo)
+      ) {
+        return false;
+      }
+    }
+    orderRef.current = nextOrder;
+    setOrder(nextOrder);
+    return true;
+  }, []);
+
   const loadWorkspace = useCallback(
     async (background: boolean) => {
       if (!shopId || !membership) return;
@@ -169,8 +187,7 @@ export function RepairOrderWorkspaceScreen({
           canManageAssignments ? api.listTechnicians(shopId) : Promise.resolve([]),
         ]);
         if (requestId !== latestRequest.current) return;
-        orderRef.current = nextOrder;
-        setOrder(nextOrder);
+        applyOrderSnapshot(nextOrder);
         setTechnicians(nextTechnicians);
         setLoadState("success");
         setError("");
@@ -185,7 +202,7 @@ export function RepairOrderWorkspaceScreen({
         }
       }
     },
-    [api, canManageAssignments, membership, repairOrderId, shopId],
+    [api, applyOrderSnapshot, canManageAssignments, membership, repairOrderId, shopId],
   );
 
   useEffect(() => {
@@ -328,6 +345,15 @@ export function RepairOrderWorkspaceScreen({
           type="button"
         >
           Công việc <span>{order.workLogs.length + order.partsUsed.length}</span>
+        </button>
+        <button
+          aria-controls="qc-panel"
+          aria-selected={tab === "qc"}
+          onClick={() => changeTab("qc")}
+          role="tab"
+          type="button"
+        >
+          QC <span>{order.qcRuns.length}</span>
         </button>
         <button
           aria-controls="timeline-panel"
@@ -502,6 +528,20 @@ export function RepairOrderWorkspaceScreen({
             api={api}
             membership={membership}
             onNavigateQuote={() => changeTab("quote")}
+            onReload={() => loadWorkspace(true)}
+            order={order}
+            shopId={shopId}
+            userId={auth.user.id}
+          />
+        </div>
+      )}
+
+      {tab === "qc" && (
+        <div id="qc-panel" role="tabpanel">
+          <QcPanel
+            api={api}
+            membership={membership}
+            onOrderChange={applyOrderSnapshot}
             onReload={() => loadWorkspace(true)}
             order={order}
             shopId={shopId}
