@@ -1,4 +1,4 @@
-export const WORKSPACE_TABS = ["overview", "diagnosis", "quote", "work", "timeline"] as const;
+export const WORKSPACE_TABS = ["overview", "diagnosis", "quote", "work", "qc", "timeline"] as const;
 
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 

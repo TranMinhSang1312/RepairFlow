@@ -120,6 +120,7 @@ function detail(quotes: Quote[] = [], status: RepairOrderDetail["status"] = "DIA
     workLogs: [],
     partRequirements: [],
     partsUsed: [],
+    qcRuns: [],
     timeline: [],
   } as RepairOrderDetail;
 }
