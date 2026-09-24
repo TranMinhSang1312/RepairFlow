@@ -1,5 +1,9 @@
 name: repairflow
 
+# The original quay.io MinIO repositories no longer expose their public manifests.
+# Pin one multi-architecture image by digest so local development and CI use the same binaries.
+x-minio-image: &minio-image bitnamilegacy/minio:2025.7.23-debian-12-r3@sha256:953d489a81cc4de7975f90e07202189c4325da39b0b92470b6a13c7ea99e36cd
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -19,8 +23,11 @@ services:
     restart: unless-stopped
 
   minio:
-    image: quay.io/minio/minio:latest
-    command: server /data --console-address ":9001"
+    image: *minio-image
+    # The previous MinIO image wrote this named volume as root; keep that ownership compatible.
+    user: "0"
+    entrypoint: ["/opt/bitnami/minio/bin/minio"]
+    command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY:-repairflow}
       MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY:-local-development-only}
@@ -29,21 +36,27 @@ services:
       - "9001:9001"
     volumes:
       - repairflow-minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: *minio-image
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     environment:
       MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY:-repairflow}
       MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY:-local-development-only}
       MINIO_BUCKET: ${OBJECT_STORAGE_BUCKET:-repairflow-private}
     entrypoint: >-
-      /bin/sh -c '
-      until /usr/bin/mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 1; done;
-      /usr/bin/mc mb --ignore-existing "local/$${MINIO_BUCKET}";
-      /usr/bin/mc anonymous set none "local/$${MINIO_BUCKET}";
+      /bin/bash -c '
+      until /opt/bitnami/minio-client/bin/mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 1; done;
+      /opt/bitnami/minio-client/bin/mc mb --ignore-existing "local/$${MINIO_BUCKET}";
+      /opt/bitnami/minio-client/bin/mc anonymous set none "local/$${MINIO_BUCKET}";
       '
     restart: "no"
 

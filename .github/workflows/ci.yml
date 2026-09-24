@@ -68,8 +68,8 @@ jobs:
 
       - name: Start object storage
         run: |
-          docker compose up -d minio
-          docker compose run --rm minio-init
+          docker compose up -d --wait minio
+          docker compose run --rm --no-deps minio-init
 
       - name: Test
         run: pnpm test
