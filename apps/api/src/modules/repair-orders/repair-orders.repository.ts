@@ -6,6 +6,7 @@ import { MediaPurpose, MembershipRole, Prisma, type RepairOrderStatus } from "@p
 import { ApiException } from "../../common/api-exception.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import { PrismaService } from "../../infra/database/prisma.service.js";
+import { qcRunInclude } from "../quality-control/runs/qc-run.types.js";
 
 export interface IntakeResources {
   shop: {
@@ -119,6 +120,10 @@ const repairOrderDetailInclude = {
   },
   partsUsed: {
     orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+  },
+  qcRuns: {
+    orderBy: [{ runNo: "desc" as const }],
+    include: qcRunInclude,
   },
 } satisfies Prisma.RepairOrderInclude;
 

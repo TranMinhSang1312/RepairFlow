@@ -131,6 +131,22 @@ export class RepairOrderStateMachineRepository {
     return result.count === 1;
   }
 
+  async incrementLockVersionForQcPass(
+    transaction: TransactionClient,
+    command: RepairOrderTransitionCommand,
+  ): Promise<boolean> {
+    const result = await transaction.repairOrder.updateMany({
+      where: {
+        shopId: command.shopId,
+        id: command.repairOrderId,
+        status: RepairOrderStatus.QUALITY_CHECK,
+        lockVersion: command.expectedLockVersion,
+      },
+      data: { lockVersion: { increment: 1 } },
+    });
+    return result.count === 1;
+  }
+
   appendEvent(
     transaction: TransactionClient,
     command: RepairOrderTransitionCommand,
