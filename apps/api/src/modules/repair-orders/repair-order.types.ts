@@ -10,6 +10,7 @@ import type {
   Priority,
   QuoteDecision,
   RepairOrderStatus,
+  ServiceType,
 } from "@prisma/client";
 
 import { toCustomerView, type CustomerView } from "../customers/customer.types.js";
@@ -37,10 +38,26 @@ import {
   type QcRunRecord,
   type QcRunView,
 } from "../quality-control/runs/qc-run.types.js";
+import {
+  calculatePaymentSummary,
+  toPaymentSummaryView,
+  toPaymentView,
+  type PaymentRecord,
+  type PaymentSummaryView,
+  type PaymentView,
+} from "../payments/payment.types.js";
+import {
+  toHandoverView,
+  toWarrantyView,
+  type HandoverView,
+  type WarrantyView,
+} from "../handovers/handover.types.js";
 
 export interface RepairOrderView {
   id: string;
   code: string;
+  serviceType: ServiceType;
+  sourceOrderId: string | null;
   status: RepairOrderStatus;
   completionOutcome: CompletionOutcome | null;
   priority: Priority;
@@ -55,6 +72,16 @@ export interface RepairOrderView {
   readyAt: string | null;
   returnedAt: string | null;
   lockVersion: number;
+}
+
+export interface LinkedOrderSummaryView {
+  code: string;
+  serviceType: ServiceType;
+  status: RepairOrderStatus;
+  completionOutcome: CompletionOutcome | null;
+  receivedAt: string;
+  readyAt: string | null;
+  returnedAt: string | null;
 }
 
 export interface RepairOrderResponse {
@@ -102,6 +129,12 @@ export interface RepairOrderDetailView extends RepairOrderView {
   partRequirements: PartRequirementView[];
   partsUsed: PartUsedView[];
   qcRuns: QcRunView[];
+  paymentSummary: PaymentSummaryView;
+  payments: PaymentView[];
+  handover: HandoverView | null;
+  warranty: WarrantyView | null;
+  sourceOrder: LinkedOrderSummaryView | null;
+  followUpOrders: LinkedOrderSummaryView[];
   timeline: OrderEventView[];
 }
 
@@ -112,6 +145,8 @@ export interface RepairOrderDetailResponse {
 interface RepairOrderRecord {
   id: string;
   code: string;
+  serviceType: ServiceType;
+  sourceOrderId: string | null;
   status: RepairOrderStatus;
   completionOutcome: CompletionOutcome | null;
   priority: Priority;
@@ -160,6 +195,8 @@ export function toRepairOrderView(order: RepairOrderRecord): RepairOrderView {
   return {
     id: order.id,
     code: order.code,
+    serviceType: order.serviceType,
+    sourceOrderId: order.sourceOrderId,
     status: order.status,
     completionOutcome: order.completionOutcome,
     priority: order.priority,
@@ -226,6 +263,11 @@ export function toRepairOrderDetailView(
     partRequirements: PartRequirement[];
     partsUsed: PartUsed[];
     qcRuns: QcRunRecord[];
+    payments: PaymentRecord[];
+    handover: Parameters<typeof toHandoverView>[0] | null;
+    warranty: Parameters<typeof toWarrantyView>[0] | null;
+    sourceOrder: LinkedOrderRecord | null;
+    followUpOrders: LinkedOrderRecord[];
   },
 ): RepairOrderDetailView {
   const binding = [...order.quoteVersions]
@@ -249,9 +291,39 @@ export function toRepairOrderDetailView(
     partRequirements: order.partRequirements.map(toPartRequirementView),
     partsUsed: toPartUsedViews(order.partsUsed),
     qcRuns: order.qcRuns.map(toQcRunView),
+    paymentSummary: toPaymentSummaryView(
+      calculatePaymentSummary(binding?.approval?.approvedTotal ?? 0n, order.payments),
+    ),
+    payments: order.payments.map(toPaymentView),
+    handover: order.handover ? toHandoverView(order.handover) : null,
+    warranty: order.warranty ? toWarrantyView(order.warranty) : null,
+    sourceOrder: order.sourceOrder ? toLinkedOrderSummaryView(order.sourceOrder) : null,
+    followUpOrders: order.followUpOrders.map(toLinkedOrderSummaryView),
     timeline: order.events.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),
     })),
+  };
+}
+
+interface LinkedOrderRecord {
+  code: string;
+  serviceType: ServiceType;
+  status: RepairOrderStatus;
+  completionOutcome: CompletionOutcome | null;
+  receivedAt: Date;
+  readyAt: Date | null;
+  returnedAt: Date | null;
+}
+
+function toLinkedOrderSummaryView(order: LinkedOrderRecord): LinkedOrderSummaryView {
+  return {
+    code: order.code,
+    serviceType: order.serviceType,
+    status: order.status,
+    completionOutcome: order.completionOutcome,
+    receivedAt: order.receivedAt.toISOString(),
+    readyAt: order.readyAt?.toISOString() ?? null,
+    returnedAt: order.returnedAt?.toISOString() ?? null,
   };
 }

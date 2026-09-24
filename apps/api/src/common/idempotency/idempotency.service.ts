@@ -17,7 +17,8 @@ interface ExecuteIdempotentlyOptions<TResponse> {
   request: unknown;
   responseStatus?: number;
   recordExpiresAt?: (response: TResponse) => Date;
-  onReplay?: (transaction: Prisma.TransactionClient) => Promise<void>;
+  onReplay?: (transaction: Prisma.TransactionClient, response: TResponse) => Promise<void>;
+  onExpiredReplay?: (transaction: Prisma.TransactionClient, response: TResponse) => Promise<never>;
   operation: (transaction: Prisma.TransactionClient) => Promise<TResponse>;
 }
 
@@ -77,12 +78,16 @@ export class IdempotencyService {
           },
         });
 
-        if (existing && existing.expiresAt > new Date()) {
-          this.assertSameRequest(existing.requestHash, requestHash);
-          await options.onReplay?.(transaction);
-          return existing.responseBody as TStored;
-        }
         if (existing) {
+          this.assertSameRequest(existing.requestHash, requestHash);
+          const stored = existing.responseBody as TStored;
+          if (existing.expiresAt > new Date()) {
+            await options.onReplay?.(transaction, stored);
+            return stored;
+          }
+          if (options.onExpiredReplay) {
+            return options.onExpiredReplay(transaction, stored);
+          }
           await transaction.idempotencyRecord.delete({ where: { id: existing.id } });
         }
 
@@ -118,7 +123,20 @@ export class IdempotencyService {
         });
         if (existing) {
           this.assertSameRequest(existing.requestHash, requestHash);
-          return existing.responseBody as TStored;
+          const stored = existing.responseBody as TStored;
+          if (existing.expiresAt <= new Date() && options.onExpiredReplay) {
+            return this.prisma.$transaction((transaction) =>
+              options.onExpiredReplay!(transaction, stored),
+            );
+          }
+          if (existing.expiresAt > new Date()) {
+            if (options.onReplay) {
+              await this.prisma.$transaction((transaction) =>
+                options.onReplay!(transaction, stored),
+              );
+            }
+            return stored;
+          }
         }
       }
       throw error;

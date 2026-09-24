@@ -10,6 +10,13 @@ export interface QuoteTokenMetadata {
   expiresAt: string;
 }
 
+export interface TrackTokenMetadata {
+  tokenId: string;
+  shopId: string;
+  repairOrderId: string;
+  expiresAt: string;
+}
+
 @Injectable()
 export class PublicTokenService {
   private readonly secret: string;
@@ -25,6 +32,10 @@ export class PublicTokenService {
     return { tokenId: randomUUID(), ...input };
   }
 
+  newTrackMetadata(input: Omit<TrackTokenMetadata, "tokenId">): TrackTokenMetadata {
+    return { tokenId: randomUUID(), ...input };
+  }
+
   deriveRawToken(metadata: QuoteTokenMetadata): string {
     const stableMetadata = JSON.stringify({
       version: 1,
@@ -33,6 +44,18 @@ export class PublicTokenService {
       repairOrderId: metadata.repairOrderId,
       quoteVersionId: metadata.quoteVersionId,
       scope: "DECIDE_QUOTE",
+      expiresAt: metadata.expiresAt,
+    });
+    return createHmac("sha256", this.secret).update(stableMetadata).digest("base64url");
+  }
+
+  deriveTrackRawToken(metadata: TrackTokenMetadata): string {
+    const stableMetadata = JSON.stringify({
+      version: 1,
+      tokenId: metadata.tokenId,
+      shopId: metadata.shopId,
+      repairOrderId: metadata.repairOrderId,
+      scope: "TRACK_ORDER",
       expiresAt: metadata.expiresAt,
     });
     return createHmac("sha256", this.secret).update(stableMetadata).digest("base64url");
@@ -56,6 +79,11 @@ export class PublicTokenService {
 
   publicUrl(metadata: QuoteTokenMetadata): string {
     const rawToken = this.deriveRawToken(metadata);
+    return new URL(`/p/${encodeURIComponent(rawToken)}`, this.publicWebUrl).toString();
+  }
+
+  trackPublicUrl(metadata: TrackTokenMetadata): string {
+    const rawToken = this.deriveTrackRawToken(metadata);
     return new URL(`/p/${encodeURIComponent(rawToken)}`, this.publicWebUrl).toString();
   }
 

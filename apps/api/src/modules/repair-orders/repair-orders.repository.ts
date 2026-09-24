@@ -125,6 +125,53 @@ const repairOrderDetailInclude = {
     orderBy: [{ runNo: "desc" as const }],
     include: qcRunInclude,
   },
+  payments: {
+    orderBy: [{ receivedAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      amount: true,
+      method: true,
+      reference: true,
+      receivedByUserId: true,
+      receivedAt: true,
+    },
+  },
+  handover: {
+    select: {
+      id: true,
+      recipientName: true,
+      paymentDisposition: true,
+      paymentNote: true,
+      handedOverByUserId: true,
+      handedOverAt: true,
+    },
+  },
+  warranty: {
+    select: { id: true, startsAt: true, endsAt: true, termsSnapshot: true },
+  },
+  sourceOrder: {
+    select: {
+      code: true,
+      serviceType: true,
+      status: true,
+      completionOutcome: true,
+      receivedAt: true,
+      readyAt: true,
+      returnedAt: true,
+    },
+  },
+  followUpOrders: {
+    orderBy: [{ receivedAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      code: true,
+      serviceType: true,
+      status: true,
+      completionOutcome: true,
+      receivedAt: true,
+      readyAt: true,
+      returnedAt: true,
+    },
+  },
 } satisfies Prisma.RepairOrderInclude;
 
 @Injectable()
