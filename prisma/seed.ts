@@ -47,10 +47,9 @@ async function seed(): Promise<void> {
         versionNo: 1,
       },
     },
-    update: {
-      name: "Kiểm tra thiết bị cơ bản",
-      isActive: true,
-    },
+    // Published QC versions are immutable. A replay may encounter a newer active
+    // version, so the seed must never reactivate or rewrite version 1.
+    update: {},
     create: {
       shopId: shop.id,
       name: "Kiểm tra thiết bị cơ bản",
@@ -58,9 +57,24 @@ async function seed(): Promise<void> {
       versionNo: 1,
       items: {
         create: [
-          { label: "Thiết bị khởi động ổn định", sortOrder: 1 },
-          { label: "Sạc và kết nối nguồn bình thường", sortOrder: 2 },
-          { label: "Ngoại quan sau sửa đã được kiểm tra", sortOrder: 3 },
+          {
+            label: "Thiết bị khởi động ổn định",
+            isRequired: true,
+            allowNa: false,
+            sortOrder: 1,
+          },
+          {
+            label: "Sạc và kết nối nguồn bình thường",
+            isRequired: true,
+            allowNa: false,
+            sortOrder: 2,
+          },
+          {
+            label: "Ngoại quan sau sửa đã được kiểm tra",
+            isRequired: true,
+            allowNa: false,
+            sortOrder: 3,
+          },
         ],
       },
     },

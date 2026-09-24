@@ -14,6 +14,7 @@ import { DevicesModule } from "./modules/devices/devices.module.js";
 import { MediaModule } from "./modules/media/media.module.js";
 import { RepairOrdersModule } from "./modules/repair-orders/repair-orders.module.js";
 import { PublicPortalModule } from "./modules/public-portal/public-portal.module.js";
+import { QualityControlModule } from "./modules/quality-control/quality-control.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -27,6 +28,7 @@ const environment = parseApiEnvironment(process.env);
     MediaModule,
     RepairOrdersModule,
     PublicPortalModule,
+    QualityControlModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,

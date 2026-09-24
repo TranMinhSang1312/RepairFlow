@@ -15,6 +15,8 @@ export const Capability = {
   QUOTE_DRAFT_WRITE: "QUOTE_DRAFT_WRITE",
   QUOTE_SEND: "QUOTE_SEND",
   SERVICE_EXECUTION_WRITE: "SERVICE_EXECUTION_WRITE",
+  QC_TEMPLATE_READ: "QC_TEMPLATE_READ",
+  QC_TEMPLATE_MANAGE: "QC_TEMPLATE_MANAGE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
@@ -33,6 +35,7 @@ const receptionistCapabilities = new Set<Capability>([
   Capability.REPAIR_ORDER_TRANSITION,
   Capability.QUOTE_DRAFT_WRITE,
   Capability.QUOTE_SEND,
+  Capability.QC_TEMPLATE_READ,
 ]);
 
 export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capability>>> = {
@@ -43,5 +46,6 @@ export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capa
     Capability.REPAIR_ORDER_TRANSITION,
     Capability.DIAGNOSIS_CREATE,
     Capability.SERVICE_EXECUTION_WRITE,
+    Capability.QC_TEMPLATE_READ,
   ]),
 };
