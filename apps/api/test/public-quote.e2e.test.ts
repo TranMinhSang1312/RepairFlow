@@ -331,6 +331,8 @@ describe("public quote read and decision API", () => {
       deviceLabel: "Acme Phone X",
       status: RepairOrderStatus.AWAITING_APPROVAL,
       completionOutcome: null,
+      readyAt: null,
+      returnedAt: null,
       timeline: [
         {
           type: "REPAIR_ORDER_RECEIVED",
@@ -349,6 +351,8 @@ describe("public quote read and decision API", () => {
           expect.objectContaining({ description: "Required service", lineTotal: 100 }),
         ]),
       }),
+      warranty: null,
+      linkedOrders: [],
     });
     expect(response.body.data.quote).not.toHaveProperty("createdByUserId");
     expect(response.body.data.quote).not.toHaveProperty("diagnosisId");

@@ -18,9 +18,37 @@ const publicTokenInclude = {
       code: true,
       status: true,
       completionOutcome: true,
+      readyAt: true,
+      returnedAt: true,
       lockVersion: true,
       deviceSnapshot: true,
       shop: { select: { name: true, contactPhone: true } },
+      warranty: {
+        select: { startsAt: true, endsAt: true, termsSnapshot: true },
+      },
+      sourceOrder: {
+        select: {
+          code: true,
+          serviceType: true,
+          status: true,
+          completionOutcome: true,
+          receivedAt: true,
+          readyAt: true,
+          returnedAt: true,
+        },
+      },
+      followUpOrders: {
+        orderBy: [{ receivedAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          code: true,
+          serviceType: true,
+          status: true,
+          completionOutcome: true,
+          receivedAt: true,
+          readyAt: true,
+          returnedAt: true,
+        },
+      },
       events: {
         where: { publicPayload: { not: Prisma.JsonNull } },
         orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],

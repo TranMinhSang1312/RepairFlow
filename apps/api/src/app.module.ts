@@ -17,6 +17,7 @@ import { PublicPortalModule } from "./modules/public-portal/public-portal.module
 import { QualityControlModule } from "./modules/quality-control/quality-control.module.js";
 import { PaymentsModule } from "./modules/payments/payments.module.js";
 import { HandoversModule } from "./modules/handovers/handovers.module.js";
+import { WarrantiesModule } from "./modules/warranties/warranties.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -33,6 +34,7 @@ const environment = parseApiEnvironment(process.env);
     QualityControlModule,
     PaymentsModule,
     HandoversModule,
+    WarrantiesModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,

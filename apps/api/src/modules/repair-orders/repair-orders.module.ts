@@ -11,6 +11,7 @@ import { AssignmentsController } from "./assignments/assignments.controller.js";
 import { AssignmentsRepository } from "./assignments/assignments.repository.js";
 import { AssignmentsService } from "./assignments/assignments.service.js";
 import { RepairOrdersController } from "./repair-orders.controller.js";
+import { RepairOrderIntakeService } from "./repair-order-intake.service.js";
 import { RepairOrdersRepository } from "./repair-orders.repository.js";
 import { RepairOrdersService } from "./repair-orders.service.js";
 import { RepairOrderStateMachineModule } from "./state-machine/repair-order-state-machine.module.js";
@@ -27,11 +28,12 @@ import { RepairOrderStateMachineModule } from "./state-machine/repair-order-stat
   providers: [
     RepairOrdersRepository,
     RepairOrdersService,
+    RepairOrderIntakeService,
     AssignmentsRepository,
     AssignmentsService,
     DiagnosesRepository,
     DiagnosesService,
   ],
-  exports: [RepairOrderStateMachineModule],
+  exports: [RepairOrderStateMachineModule, RepairOrderIntakeService],
 })
 export class RepairOrdersModule {}
