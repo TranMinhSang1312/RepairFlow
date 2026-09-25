@@ -451,6 +451,7 @@ export class PublicPortalService {
   }
 
   private toPublicOrder(record: PublicTokenRecord): PublicOrderResponse {
+    const now = Date.now();
     return {
       data: {
         shopName: record.repairOrder.shop.name,
@@ -459,6 +460,8 @@ export class PublicPortalService {
         deviceLabel: this.deviceLabel(record.repairOrder.deviceSnapshot),
         status: record.repairOrder.status,
         completionOutcome: record.repairOrder.completionOutcome,
+        readyAt: record.repairOrder.readyAt?.toISOString() ?? null,
+        returnedAt: record.repairOrder.returnedAt?.toISOString() ?? null,
         timeline: record.repairOrder.events.map((event) => ({
           type: event.eventType,
           message: this.publicEventMessage(event.eventType, event.publicPayload),
@@ -468,6 +471,34 @@ export class PublicPortalService {
           record.scope === TokenScope.DECIDE_QUOTE && record.quoteVersion
             ? this.toPublicQuote(record.quoteVersion)
             : null,
+        warranty:
+          record.scope === TokenScope.TRACK_ORDER && record.repairOrder.warranty
+            ? {
+                startsAt: record.repairOrder.warranty.startsAt.toISOString(),
+                endsAt: record.repairOrder.warranty.endsAt.toISOString(),
+                terms: record.repairOrder.warranty.termsSnapshot,
+                status:
+                  record.repairOrder.warranty.startsAt.getTime() <= now &&
+                  now < record.repairOrder.warranty.endsAt.getTime()
+                    ? "ACTIVE"
+                    : "EXPIRED",
+              }
+            : null,
+        linkedOrders:
+          record.scope === TokenScope.TRACK_ORDER
+            ? [
+                ...(record.repairOrder.sourceOrder ? [record.repairOrder.sourceOrder] : []),
+                ...record.repairOrder.followUpOrders,
+              ].map((order) => ({
+                code: order.code,
+                serviceType: order.serviceType,
+                status: order.status,
+                completionOutcome: order.completionOutcome,
+                receivedAt: order.receivedAt.toISOString(),
+                readyAt: order.readyAt?.toISOString() ?? null,
+                returnedAt: order.returnedAt?.toISOString() ?? null,
+              }))
+            : [],
       },
     };
   }
@@ -508,6 +539,9 @@ export class PublicPortalService {
     if (typeof object.status === "string") return `Repair status changed to ${object.status}.`;
     if (eventType === "REPAIR_ORDER_RECEIVED") return "The device was received.";
     if (eventType === "QUOTE_SENT") return "A quote was sent for approval.";
+    if (eventType === "warranty_case.opened") {
+      return "The device was received for warranty service.";
+    }
     return "The repair order was updated.";
   }
 

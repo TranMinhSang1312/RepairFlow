@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs PrismaService at runtime for DI. */
 
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { MediaPurpose, MembershipRole, Prisma, type RepairOrderStatus } from "@prisma/client";
+import {
+  ActorType,
+  MediaPurpose,
+  MembershipRole,
+  Prisma,
+  type RepairOrderStatus,
+  type ServiceType,
+} from "@prisma/client";
 
 import { ApiException } from "../../common/api-exception.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
@@ -26,6 +33,8 @@ export interface CreateOrderData {
   deviceId: string;
   orderNo: number;
   code: string;
+  serviceType: ServiceType;
+  sourceOrderId: string | null;
   priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
   reportedProblem: string;
   intakeCondition: string;
@@ -37,6 +46,11 @@ export interface CreateOrderData {
   mediaAssetIds: string[];
   actorUserId: string;
   requestId: string;
+  event: {
+    eventType: string;
+    publicPayload: Prisma.InputJsonValue;
+    privatePayload: Prisma.InputJsonValue;
+  };
 }
 
 export interface RepairOrderCursor {
@@ -250,6 +264,17 @@ export class RepairOrdersRepository {
     });
   }
 
+  detailInTransaction(
+    transaction: Prisma.TransactionClient,
+    tenant: Pick<TenantContext, "shopId">,
+    repairOrderId: string,
+  ) {
+    return transaction.repairOrder.findFirst({
+      where: { shopId: tenant.shopId, id: repairOrderId },
+      include: repairOrderDetailInclude,
+    });
+  }
+
   private normalizePhoneSearch(value: string): string | null {
     const digits = value.replace(/\D/g, "");
     if (digits.length < 3) {
@@ -327,6 +352,8 @@ export class RepairOrdersRepository {
         deviceId: data.deviceId,
         orderNo: data.orderNo,
         code: data.code,
+        serviceType: data.serviceType,
+        sourceOrderId: data.sourceOrderId,
         priority: data.priority,
         reportedProblem: data.reportedProblem,
         intakeCondition: data.intakeCondition,
@@ -370,12 +397,12 @@ export class RepairOrdersRepository {
       data: {
         shopId: tenant.shopId,
         repairOrderId: order.id,
-        eventType: "ORDER_CREATED",
+        eventType: data.event.eventType,
         toStatus: "RECEIVED",
-        actorType: "USER",
+        actorType: ActorType.USER,
         actorUserId: data.actorUserId,
-        publicPayload: { code: data.code, status: "RECEIVED" },
-        privatePayload: { branchId: data.branchId, mediaCount: data.mediaAssetIds.length },
+        publicPayload: data.event.publicPayload,
+        privatePayload: data.event.privatePayload,
         requestId: data.requestId,
       },
     });

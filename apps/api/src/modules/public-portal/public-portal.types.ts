@@ -5,6 +5,7 @@ import type {
   QuoteQuantityUnit,
   QuoteStatus,
   RepairOrderStatus,
+  ServiceType,
 } from "@prisma/client";
 
 export interface PublicQuoteItemView {
@@ -45,8 +46,25 @@ export interface PublicOrderResponse {
     deviceLabel: string;
     status: RepairOrderStatus;
     completionOutcome: CompletionOutcome | null;
+    readyAt: string | null;
+    returnedAt: string | null;
     timeline: Array<{ type: string; message: string; createdAt: string }>;
     quote: PublicQuoteView | null;
+    warranty: {
+      startsAt: string;
+      endsAt: string;
+      terms: string;
+      status: "ACTIVE" | "EXPIRED";
+    } | null;
+    linkedOrders: Array<{
+      code: string;
+      serviceType: ServiceType;
+      status: RepairOrderStatus;
+      completionOutcome: CompletionOutcome | null;
+      receivedAt: string;
+      readyAt: string | null;
+      returnedAt: string | null;
+    }>;
   };
 }
 
