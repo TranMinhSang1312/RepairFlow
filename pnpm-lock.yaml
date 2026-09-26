@@ -197,6 +197,12 @@ importers:
 
   apps/worker:
     dependencies:
+      '@prisma/adapter-pg':
+        specifier: 7.10.0
+        version: 7.10.0
+      '@prisma/client':
+        specifier: 7.10.0
+        version: 7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3))(typescript@5.9.3)
       '@repairflow/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -206,6 +212,9 @@ importers:
       dotenv:
         specifier: 18.0.0
         version: 18.0.0
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
       pino:
         specifier: 10.3.1
         version: 10.3.1
@@ -213,6 +222,9 @@ importers:
       '@types/node':
         specifier: 26.6.1
         version: 26.6.1
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
       eslint:
         specifier: 10.10.0
         version: 10.10.0(jiti@2.7.0)
