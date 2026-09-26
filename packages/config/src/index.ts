@@ -54,12 +54,32 @@ const apiEnvironmentSchema = z
     }
   });
 
-const workerEnvironmentSchema = z.object({
-  NODE_ENV: nodeEnvironment.default("development"),
-  LOG_LEVEL: logLevel.default("info"),
-  DATABASE_URL: z.string().min(1),
-  WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(5000),
-});
+const workerEnvironmentSchema = z
+  .object({
+    NODE_ENV: nodeEnvironment.default("development"),
+    LOG_LEVEL: logLevel.default("info"),
+    DATABASE_URL: z.string().min(1),
+    WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(5000),
+    WORKER_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+    WORKER_LEASE_MS: z.coerce.number().int().min(1000).max(900000).default(30000),
+    WORKER_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(25).default(5),
+    WORKER_RETRY_BASE_MS: z.coerce.number().int().min(250).max(3600000).default(1000),
+    WORKER_RETRY_MAX_MS: z.coerce.number().int().min(250).max(86400000).default(60000),
+    WORKER_NOTIFICATION_PROVIDER: z.enum(["fake", "email"]).default("fake"),
+  })
+  .superRefine((environment, context) => {
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.WORKER_NOTIFICATION_PROVIDER === "fake"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["WORKER_NOTIFICATION_PROVIDER"],
+        message:
+          "Production cannot mark notifications sent through the deterministic fake provider.",
+      });
+    }
+  });
 
 const webEnvironmentSchema = z.object({
   NODE_ENV: nodeEnvironment.default("development"),

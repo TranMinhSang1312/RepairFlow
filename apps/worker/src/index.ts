@@ -1,7 +1,14 @@
 import { parseWorkerEnvironment } from "@repairflow/config";
 import { loadWorkspaceEnvironment } from "@repairflow/config/node";
+import { hostname } from "node:os";
 import pino from "pino";
 
+import { createPrismaClient } from "./database.js";
+import { DeterministicFakeNotificationProvider } from "./outbox/notification-provider.js";
+import { NotificationOutboxHandler } from "./outbox/notification-outbox-handler.js";
+import { OutboxLoop } from "./outbox/outbox-loop.js";
+import { OutboxProcessor } from "./outbox/outbox-processor.js";
+import { OutboxRepository } from "./outbox/outbox-repository.js";
 import { workerHealth } from "./worker";
 
 loadWorkspaceEnvironment();
@@ -14,17 +21,35 @@ const logger = pino({
   },
 });
 
-logger.info(workerHealth(), "RepairFlow worker started");
+const workerId = `${hostname()}:${process.pid}`;
+if (environment.WORKER_NOTIFICATION_PROVIDER !== "fake") {
+  throw new Error("WORKER_NOTIFICATION_PROVIDER_NOT_IMPLEMENTED");
+}
+const prisma = createPrismaClient(environment.DATABASE_URL);
+const repository = new OutboxRepository(prisma);
+const provider = new DeterministicFakeNotificationProvider();
+const handler = new NotificationOutboxHandler(repository, provider);
+const processor = new OutboxProcessor(repository, handler, logger, workerId, {
+  eventTypes: ["QUOTE_SENT"],
+  batchSize: environment.WORKER_BATCH_SIZE,
+  leaseMs: environment.WORKER_LEASE_MS,
+  maxAttempts: environment.WORKER_MAX_ATTEMPTS,
+  retryBaseMs: environment.WORKER_RETRY_BASE_MS,
+  retryMaxMs: environment.WORKER_RETRY_MAX_MS,
+});
+const loop = new OutboxLoop(processor, logger, environment.WORKER_POLL_INTERVAL_MS);
+let shuttingDown = false;
 
-const pollTimer = setInterval(() => {
-  logger.debug({ pollIntervalMs: environment.WORKER_POLL_INTERVAL_MS }, "Worker heartbeat");
-}, environment.WORKER_POLL_INTERVAL_MS);
+logger.info({ ...workerHealth(), workerId }, "RepairFlow worker started");
+loop.start();
 
-function shutdown(signal: NodeJS.Signals): void {
-  clearInterval(pollTimer);
-  logger.info({ signal }, "RepairFlow worker stopped");
-  process.exitCode = 0;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await loop.stop();
+  await prisma.$disconnect();
+  logger.info({ signal, workerId }, "RepairFlow worker stopped");
 }
 
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.once("SIGINT", (signal) => void shutdown(signal));
+process.once("SIGTERM", (signal) => void shutdown(signal));
