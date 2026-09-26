@@ -20,10 +20,18 @@ export default defineConfig({
       use: { browserName: "chromium", viewport: { width: 360, height: 800 } },
     },
   ],
-  webServer: {
-    command: "pnpm exec next dev --hostname 127.0.0.1 --port 3100",
-    url: "http://127.0.0.1:3100/login",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "pnpm --filter @repairflow/api dev",
+      url: "http://127.0.0.1:3001/api/v1/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "pnpm exec next dev --hostname 127.0.0.1 --port 3100",
+      url: "http://127.0.0.1:3100/login",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

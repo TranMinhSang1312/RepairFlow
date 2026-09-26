@@ -7,6 +7,7 @@ const FORWARDED_REQUEST_HEADERS = [
   "cookie",
   "idempotency-key",
   "x-shop-id",
+  "x-repairflow-invitation-token",
 ] as const;
 
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "retry-after", "set-cookie"] as const;

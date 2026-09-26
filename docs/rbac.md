@@ -20,7 +20,7 @@ Legend: `A` allowed, `O` allowed only for an assigned order, `—` denied, `T` a
 | View shop settings | A | — | — | — |
 | Edit shop settings | A | — | — | — |
 | Manage branches | A | — | — | — |
-| Invite/deactivate staff | A | — | — | — |
+| Invite/reissue/revoke or change staff role/status | A | — | — | — |
 | View staff membership | A | A | — | — |
 | View customers/devices | A | A | O | — |
 | Create/update customer | A | A | — | — |
@@ -81,9 +81,9 @@ A `TRACK_ORDER` token cannot decide a quote. A `DECIDE_QUOTE` token cannot acces
 1. Authentication identifies the user.
 2. `X-Shop-Id` selects a shop but grants no permission by itself.
 3. A tenant guard validates active membership and builds tenant context.
+4. Staff invitation acceptance does not trust `X-Shop-Id`: the hashed invitation selects the destination shop, and existing users must authenticate with the invited email.
 4. A permission guard checks the action and role.
 5. The application service checks resource ownership, assignment, state, and domain guards.
 6. The repository includes shop scoping in every query.
 
 UI visibility is not an authorization control. Every denied action must also be rejected by the API.
-

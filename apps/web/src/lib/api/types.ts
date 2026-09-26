@@ -42,6 +42,48 @@ export interface RegisterOwnerInput {
   branchName: string;
 }
 
+export interface StaffMembership {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: MembershipRole;
+  status: MembershipStatus;
+  joinedAt: string | null;
+  updatedAt: string;
+  lockVersion: number;
+}
+
+export type StaffInvitationStatus = "PENDING" | "ACCEPTED" | "REVOKED" | "SUPERSEDED" | "EXPIRED";
+
+export interface StaffInvitation {
+  id: string;
+  email: string;
+  role: "RECEPTIONIST" | "TECHNICIAN";
+  status: StaffInvitationStatus;
+  expiresAt: string;
+  createdAt: string;
+  lockVersion: number;
+}
+
+export interface StaffInvitationCommand extends StaffInvitation {
+  setupUrl: string;
+}
+
+export interface PublicStaffInvitation {
+  shopName: string;
+  maskedEmail: string;
+  role: "RECEPTIONIST" | "TECHNICIAN";
+  expiresAt: string;
+  acceptanceMode: "CREATE_ACCOUNT" | "SIGN_IN";
+}
+
+export interface StaffMembershipFilters {
+  query?: string;
+  role?: MembershipRole;
+  status?: MembershipStatus;
+  cursor?: string;
+}
+
 export interface Customer {
   id: string;
   name: string;

@@ -11,6 +11,8 @@ servers:
 tags:
   - name: Auth
     description: Staff identity, sessions, and current memberships.
+  - name: Staff
+    description: Tenant staff membership and secure invitation onboarding.
   - name: Customers
     description: Shop-scoped customer records.
   - name: Devices
@@ -680,6 +682,129 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidState'}
         '422': {$ref: '#/components/responses/ValidationError'}
+  /api/v1/staff-memberships:
+    get:
+      tags: [Staff]
+      summary: List memberships in the selected shop
+      operationId: listStaffMemberships
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {name: query, in: query, schema: {type: string, maxLength: 100}}
+        - {name: role, in: query, schema: {$ref: '#/components/schemas/MembershipRole'}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/MembershipStatus'}}
+      responses:
+        '200': {description: Tenant membership page, content: {application/json: {schema: {$ref: '#/components/schemas/StaffMembershipPage'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/staff-memberships/{userId}:
+    patch:
+      tags: [Staff]
+      summary: Change a staff role or active state
+      operationId: updateStaffMembership
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: userId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateStaffMembershipRequest'}}}}
+      responses:
+        '200': {description: Membership updated, content: {application/json: {schema: {$ref: '#/components/schemas/StaffMembershipResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/staff-invitations:
+    get:
+      tags: [Staff]
+      summary: List invitations for an owner
+      operationId: listStaffInvitations
+      parameters: [{$ref: '#/components/parameters/ShopHeader'}]
+      responses:
+        '200': {description: Invitation list, content: {application/json: {schema: {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/StaffInvitation'}}}}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Staff]
+      summary: Create a manual staff setup link
+      operationId: createStaffInvitation
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateStaffInvitationRequest'}}}}
+      responses:
+        '201': {description: Invitation created, content: {application/json: {schema: {$ref: '#/components/schemas/StaffInvitationCommandResponse'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/staff-invitations/{invitationId}/reissue:
+    post:
+      tags: [Staff]
+      summary: Supersede an invitation and issue a new link
+      operationId: reissueStaffInvitation
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: invitationId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExpectedLockVersion'}}}}
+      responses:
+        '200': {description: Replacement invitation, content: {application/json: {schema: {$ref: '#/components/schemas/StaffInvitationCommandResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /api/v1/staff-invitations/{invitationId}/revoke:
+    post:
+      tags: [Staff]
+      summary: Revoke a pending invitation
+      operationId: revokeStaffInvitation
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: invitationId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExpectedLockVersion'}}}}
+      responses:
+        '200': {description: Revoked invitation, content: {application/json: {schema: {$ref: '#/components/schemas/StaffInvitationResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /public/v1/staff-invitation:
+    get:
+      tags: [Staff]
+      summary: Inspect a staff invitation safely
+      operationId: inspectStaffInvitation
+      security: []
+      parameters: [{$ref: '#/components/parameters/StaffInvitationToken'}]
+      responses:
+        '200': {description: Safe invitation projection, content: {application/json: {schema: {$ref: '#/components/schemas/PublicStaffInvitationResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '410': {$ref: '#/components/responses/PublicLinkExpired'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
+  /public/v1/staff-invitation/accept:
+    post:
+      tags: [Staff]
+      summary: Create a new invited identity and membership
+      operationId: acceptNewStaffInvitation
+      security: []
+      parameters: [{$ref: '#/components/parameters/StaffInvitationToken'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptNewStaffInvitationRequest'}}}}
+      responses:
+        '201': {description: Identity, membership and session created atomically, content: {application/json: {schema: {$ref: '#/components/schemas/AuthResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '410': {$ref: '#/components/responses/PublicLinkExpired'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/staff-invitations/accept:
+    post:
+      tags: [Staff]
+      summary: Accept an invitation as the exact signed-in recipient
+      operationId: acceptExistingStaffInvitation
+      parameters: [{$ref: '#/components/parameters/StaffInvitationToken'}]
+      responses:
+        '200': {description: Updated current user, content: {application/json: {schema: {$ref: '#/components/schemas/CurrentUserResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
   /public/v1/orders/{token}:
     get:
       tags: [Public portal]
@@ -828,6 +953,12 @@ components:
       in: path
       required: true
       schema: {type: string, minLength: 32, maxLength: 256}
+    StaffInvitationToken:
+      name: X-RepairFlow-Invitation-Token
+      in: header
+      required: true
+      description: Single-purpose staff invitation token; redacted from all logs.
+      schema: {type: string, minLength: 32, maxLength: 256}
 
   responses:
     Unauthorized:
@@ -877,6 +1008,113 @@ components:
       type: integer
       format: int64
       minimum: 0
+    MembershipRole:
+      type: string
+      enum: [OWNER, RECEPTIONIST, TECHNICIAN]
+    MembershipStatus:
+      type: string
+      enum: [INVITED, ACTIVE, INACTIVE]
+    StaffInvitationStatus:
+      type: string
+      enum: [PENDING, ACCEPTED, REVOKED, SUPERSEDED, EXPIRED]
+    StaffMembership:
+      type: object
+      additionalProperties: false
+      required: [userId, email, displayName, role, status, joinedAt, updatedAt, lockVersion]
+      properties:
+        userId: {$ref: '#/components/schemas/Uuid'}
+        email: {type: string, format: email}
+        displayName: {type: string}
+        role: {$ref: '#/components/schemas/MembershipRole'}
+        status: {$ref: '#/components/schemas/MembershipStatus'}
+        joinedAt: {type: [string, 'null'], format: date-time}
+        updatedAt: {$ref: '#/components/schemas/IsoDateTime'}
+        lockVersion: {type: integer, minimum: 0}
+    StaffMembershipPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/StaffMembership'}}
+        meta:
+          type: object
+          required: [nextCursor]
+          properties: {nextCursor: {type: [string, 'null']}}
+    StaffMembershipResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/StaffMembership'}}
+    UpdateStaffMembershipRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedLockVersion]
+      minProperties: 2
+      properties:
+        role: {$ref: '#/components/schemas/MembershipRole'}
+        status: {type: string, enum: [ACTIVE, INACTIVE]}
+        expectedLockVersion: {type: integer, minimum: 0}
+    ExpectedLockVersion:
+      type: object
+      additionalProperties: false
+      required: [expectedLockVersion]
+      properties: {expectedLockVersion: {type: integer, minimum: 0}}
+    CreateStaffInvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [email, role]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        role: {type: string, enum: [RECEPTIONIST, TECHNICIAN]}
+    StaffInvitation:
+      type: object
+      additionalProperties: false
+      required: [id, email, role, status, expiresAt, createdAt, lockVersion]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        email: {type: string, format: email}
+        role: {type: string, enum: [RECEPTIONIST, TECHNICIAN]}
+        status: {$ref: '#/components/schemas/StaffInvitationStatus'}
+        expiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+        lockVersion: {type: integer, minimum: 0}
+    StaffInvitationResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/StaffInvitation'}}
+    StaffInvitationCommandResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          allOf:
+            - {$ref: '#/components/schemas/StaffInvitation'}
+            - type: object
+              required: [setupUrl]
+              properties: {setupUrl: {type: string, format: uri}}
+    PublicStaffInvitationResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [shopName, maskedEmail, role, expiresAt, acceptanceMode]
+          properties:
+            shopName: {type: string}
+            maskedEmail: {type: string}
+            role: {type: string, enum: [RECEPTIONIST, TECHNICIAN]}
+            expiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+            acceptanceMode: {type: string, enum: [CREATE_ACCOUNT, SIGN_IN]}
+    AcceptNewStaffInvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [displayName, password]
+      properties:
+        displayName: {type: string, minLength: 1, maxLength: 100}
+        password: {type: string, minLength: 10, maxLength: 128}
+    CurrentUserResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/CurrentUser'}}
     ErrorResponse:
       type: object
       required: [error]

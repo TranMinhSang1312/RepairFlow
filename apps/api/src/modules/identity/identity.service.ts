@@ -28,7 +28,7 @@ const LOGIN_POLICY = { limit: 10, windowMs: 15 * 60 * 1000 } as const;
 const LOGIN_IP_POLICY = { limit: 50, windowMs: 15 * 60 * 1000 } as const;
 const REFRESH_POLICY = { limit: 20, windowMs: 15 * 60 * 1000 } as const;
 
-type IdentityDbClient = PrismaService | Prisma.TransactionClient;
+export type IdentityDbClient = PrismaService | Prisma.TransactionClient;
 type RefreshResult = { kind: "expired" | "reused" } | { kind: "issued"; issued: IssuedAuth };
 
 function normalizedEmail(email: string): string {
@@ -275,6 +275,25 @@ export class IdentityService {
     }
 
     return { data: this.toCurrentUser(user) };
+  }
+
+  async issueAuthForUser(
+    userId: string,
+    request: Request,
+    db: IdentityDbClient,
+  ): Promise<IssuedAuth> {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      include: identityUserInclude,
+    });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new ApiException(
+        HttpStatus.UNAUTHORIZED,
+        "AUTH_REQUIRED",
+        "Authentication is required.",
+      );
+    }
+    return this.issueAuth(user, request, db);
   }
 
   private async issueAuth(

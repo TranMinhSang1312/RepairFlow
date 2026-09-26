@@ -1995,6 +1995,132 @@ body > main.auth-shell {
   }
 }
 
+.staff-settings,
+.join-shell {
+  overflow-wrap: anywhere;
+}
+
+.staff-invite-card,
+.staff-card-list,
+.staff-member-actions,
+.staff-filters,
+.join-form,
+.invite-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.staff-invite-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.4fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.setup-link-result,
+.staff-member-card,
+.staff-invitation-card,
+.staff-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.setup-link-result > label {
+  flex: 1;
+}
+.staff-card-list {
+  margin-top: 18px;
+}
+.staff-member-card,
+.staff-invitation-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+.staff-member-card h3,
+.staff-member-card p,
+.staff-invitation-card p {
+  margin: 0 0 5px;
+}
+.staff-member-card small,
+.staff-invitation-card small {
+  color: var(--muted);
+}
+.staff-member-actions {
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+}
+.staff-filters {
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+}
+
+.join-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--surface-soft);
+}
+.join-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  padding: clamp(24px, 6vw, 48px);
+  box-shadow: var(--shadow);
+}
+.join-card h1 {
+  margin-top: 8px;
+}
+.invite-summary {
+  margin: 24px 0;
+  grid-template-columns: repeat(3, 1fr);
+}
+.invite-summary div {
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 12px;
+}
+.invite-summary dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.invite-summary dd {
+  margin: 5px 0 0;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .staff-invite-form,
+  .staff-member-actions,
+  .staff-filters,
+  .invite-summary {
+    grid-template-columns: 1fr;
+  }
+  .setup-link-result,
+  .staff-member-card,
+  .staff-invitation-card,
+  .staff-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .inline-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .staff-settings .button,
+  .join-card .button {
+    width: 100%;
+  }
+  .join-shell {
+    padding: 10px;
+  }
+  .join-card {
+    border-radius: 16px;
+  }
+}
+
 .handover-workspace,
 .handover-panel {
   display: grid;

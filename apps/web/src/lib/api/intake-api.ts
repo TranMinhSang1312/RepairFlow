@@ -40,6 +40,13 @@ import type {
   CreateWarrantyFollowUpInput,
   HandoverResult,
   PaymentResult,
+  StaffMembership,
+  StaffMembershipFilters,
+  StaffInvitation,
+  StaffInvitationCommand,
+  PublicStaffInvitation,
+  MembershipRole,
+  MembershipStatus,
 } from "./types";
 
 interface DataResponse<T> {
@@ -203,6 +210,43 @@ export interface AuthApi {
   getMe(): Promise<CurrentUser>;
 }
 
+export interface StaffMembershipApi {
+  listStaffMemberships(
+    shopId: string,
+    filters?: StaffMembershipFilters,
+  ): Promise<{ data: StaffMembership[]; nextCursor: string | null }>;
+  listStaffInvitations(shopId: string): Promise<StaffInvitation[]>;
+  createStaffInvitation(
+    shopId: string,
+    input: { email: string; role: "RECEPTIONIST" | "TECHNICIAN" },
+    key: string,
+  ): Promise<StaffInvitationCommand>;
+  reissueStaffInvitation(
+    shopId: string,
+    invitationId: string,
+    expectedLockVersion: number,
+    key: string,
+  ): Promise<StaffInvitationCommand>;
+  revokeStaffInvitation(
+    shopId: string,
+    invitationId: string,
+    expectedLockVersion: number,
+    key: string,
+  ): Promise<StaffInvitation>;
+  updateStaffMembership(
+    shopId: string,
+    userId: string,
+    input: { role?: MembershipRole; status?: MembershipStatus; expectedLockVersion: number },
+    key: string,
+  ): Promise<StaffMembership>;
+  inspectStaffInvitation(token: string): Promise<PublicStaffInvitation>;
+  acceptNewStaffInvitation(
+    token: string,
+    input: { displayName: string; password: string },
+  ): Promise<AuthData>;
+  acceptExistingStaffInvitation(token: string): Promise<CurrentUser>;
+}
+
 export interface SessionCallbacks {
   onSession?(auth: AuthData): void;
   onSessionExpired?(): void;
@@ -214,7 +258,7 @@ type RequestOptions = RequestInit & {
   retryAuth?: boolean;
 };
 
-export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
+export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi, StaffMembershipApi {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
 
@@ -285,6 +329,123 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
   clearSession(): void {
     this.accessToken = null;
     this.callbacks.onSessionExpired?.();
+  }
+
+  async listStaffMemberships(shopId: string, filters: StaffMembershipFilters = {}) {
+    const params = new URLSearchParams();
+    if (filters.query) params.set("query", filters.query);
+    if (filters.role) params.set("role", filters.role);
+    if (filters.status) params.set("status", filters.status);
+    if (filters.cursor) params.set("cursor", filters.cursor);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    const response = await this.request<
+      DataResponse<StaffMembership[]> & { meta: { nextCursor: string | null } }
+    >(`/staff-memberships${suffix}`, { shopId });
+    return { data: response.data, nextCursor: response.meta.nextCursor };
+  }
+
+  async listStaffInvitations(shopId: string): Promise<StaffInvitation[]> {
+    const response = await this.request<DataResponse<StaffInvitation[]>>("/staff-invitations", {
+      shopId,
+    });
+    return response.data;
+  }
+
+  async createStaffInvitation(
+    shopId: string,
+    input: { email: string; role: "RECEPTIONIST" | "TECHNICIAN" },
+    key: string,
+  ) {
+    const response = await this.request<DataResponse<StaffInvitationCommand>>(
+      "/staff-invitations",
+      { method: "POST", shopId, idempotencyKey: key, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async reissueStaffInvitation(
+    shopId: string,
+    invitationId: string,
+    expectedLockVersion: number,
+    key: string,
+  ) {
+    const response = await this.request<DataResponse<StaffInvitationCommand>>(
+      `/staff-invitations/${encodeURIComponent(invitationId)}/reissue`,
+      {
+        method: "POST",
+        shopId,
+        idempotencyKey: key,
+        body: JSON.stringify({ expectedLockVersion }),
+      },
+    );
+    return response.data;
+  }
+
+  async revokeStaffInvitation(
+    shopId: string,
+    invitationId: string,
+    expectedLockVersion: number,
+    key: string,
+  ) {
+    const response = await this.request<DataResponse<StaffInvitation>>(
+      `/staff-invitations/${encodeURIComponent(invitationId)}/revoke`,
+      {
+        method: "POST",
+        shopId,
+        idempotencyKey: key,
+        body: JSON.stringify({ expectedLockVersion }),
+      },
+    );
+    return response.data;
+  }
+
+  async updateStaffMembership(
+    shopId: string,
+    userId: string,
+    input: { role?: MembershipRole; status?: MembershipStatus; expectedLockVersion: number },
+    key: string,
+  ) {
+    const response = await this.request<DataResponse<StaffMembership>>(
+      `/staff-memberships/${encodeURIComponent(userId)}`,
+      { method: "PATCH", shopId, idempotencyKey: key, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async inspectStaffInvitation(token: string): Promise<PublicStaffInvitation> {
+    const response = await this.fetcher.call(globalThis, "/api/staff-invitation", {
+      method: "GET",
+      headers: { "X-RepairFlow-Invitation-Token": token },
+      cache: "no-store",
+    });
+    if (!response.ok) throw await apiErrorFromResponse(response);
+    return ((await response.json()) as DataResponse<PublicStaffInvitation>).data;
+  }
+
+  async acceptNewStaffInvitation(
+    token: string,
+    input: { displayName: string; password: string },
+  ): Promise<AuthData> {
+    const response = await this.fetcher.call(globalThis, "/api/staff-invitation", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-RepairFlow-Invitation-Token": token },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    if (!response.ok) throw await apiErrorFromResponse(response);
+    const body = (await response.json()) as DataResponse<AuthData>;
+    this.accessToken = body.data.accessToken;
+    this.callbacks.onSession?.(body.data);
+    return body.data;
+  }
+
+  async acceptExistingStaffInvitation(token: string): Promise<CurrentUser> {
+    const response = await this.request<DataResponse<CurrentUser>>("/staff-invitations/accept", {
+      method: "POST",
+      headers: { "X-RepairFlow-Invitation-Token": token },
+    });
+    return response.data;
   }
 
   async searchCustomers(shopId: string, query: string): Promise<Customer[]> {
