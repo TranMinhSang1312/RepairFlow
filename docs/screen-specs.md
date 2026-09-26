@@ -218,7 +218,7 @@ Work logs cannot be edited in place. Correction creates a superseding entry.
 
 ## S10 — Shop and staff settings
 
-Owner only.
+Owner and receptionist can open the staff list. Only the owner sees invitation and role/status controls; technicians are denied.
 
 - Shop name, timezone, contact, order-code prefix.
 - Intake photo minimum.
@@ -226,7 +226,9 @@ Owner only.
 - Default warranty terms.
 - Branch management.
 - Staff invite, role, active/inactive state.
+- Invitation links are single-use and expire after 72 hours. New users set their own password; existing users sign in as the invited email.
+- Deactivation confirmation explains that access ends immediately while repair history remains. The last active owner cannot be demoted or deactivated.
+- Loading, empty, retry, conflict, expired-link, read-only, and 360 px card states are explicit.
 - QC template management.
 
 Changing templates or default terms never rewrites historical snapshots.
-

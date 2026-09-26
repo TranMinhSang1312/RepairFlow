@@ -2,6 +2,7 @@ export const HTTP_LOG_REDACTION = {
   paths: [
     "req.headers.authorization",
     "req.headers.cookie",
+    'req.headers["x-repairflow-invitation-token"]',
     'res.headers["set-cookie"]',
     "req.body.password",
     "req.body.accessToken",
@@ -12,7 +13,7 @@ export const HTTP_LOG_REDACTION = {
   censor: "[REDACTED]",
 };
 
-const PUBLIC_TOKEN_PATH = /(\/public\/v1\/(?:orders|quotes)\/)[^/?#]+/gu;
+const PUBLIC_TOKEN_PATH = /(\/(?:public\/v1\/(?:orders|quotes)|join)\/)[^/?#]+/gu;
 
 export function redactPublicTokenUrl(url: string | undefined): string | undefined {
   return url?.replace(PUBLIC_TOKEN_PATH, "$1[REDACTED]");

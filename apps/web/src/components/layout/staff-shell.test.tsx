@@ -85,6 +85,9 @@ describe("ProtectedStaffLayout", () => {
     expect(screen.getByRole("link", { name: "Mẫu QC" }).getAttribute("href")).toBe(
       "/settings/qc?shopId=shop-one",
     );
+    expect(screen.getByRole("link", { name: "Nhân viên" }).getAttribute("href")).toBe(
+      "/settings/staff?shopId=shop-one",
+    );
 
     authState = {
       ...authState,
@@ -106,5 +109,22 @@ describe("ProtectedStaffLayout", () => {
       </ProtectedStaffLayout>,
     );
     expect(screen.queryByRole("link", { name: "Mẫu QC" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Nhân viên" })).toBeTruthy();
+
+    authState = {
+      ...authState,
+      user: {
+        displayName: "Technician",
+        memberships: [
+          { shopId: "shop-one", shopName: "Shop One", role: "TECHNICIAN", status: "ACTIVE" },
+        ],
+      },
+    };
+    rerender(
+      <ProtectedStaffLayout>
+        <div>content</div>
+      </ProtectedStaffLayout>,
+    );
+    expect(screen.queryByRole("link", { name: "Nhân viên" })).toBeNull();
   });
 });

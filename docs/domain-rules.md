@@ -22,6 +22,15 @@ Status: proposed specification for `spec-v0.1`
 4. A record from another shop must behave as not found. The API must not reveal whether it exists.
 5. Owners may access every branch in their shop. Receptionists and technicians may be restricted by branch membership in a later version; the MVP grants their role across the shop.
 
+### Staff membership and invitations
+
+1. An owner creates a 72-hour, single-use invitation for a normalized email and either `RECEPTIONIST` or `TECHNICIAN`; the owner never supplies or sees the employee password.
+2. A new email creates its own identity and active membership when the invitation is accepted. An existing email must authenticate as that exact global user before acceptance.
+3. Invitation tokens are purpose-separated, stored only as SHA-256 hashes, and become unusable after acceptance, revocation, supersession, or expiry.
+4. At least one active owner must remain. Role/status mutations lock the shop, check `lockVersion`, update membership, and append audit in one transaction.
+5. Deactivation immediately removes tenant access and assignability for that shop while preserving the global identity, other-shop memberships, assignments, repair history, and audit history.
+6. Invite create/reissue/revoke and membership mutation are idempotent. Acceptance is exactly once and never persists an authentication response.
+
 ## Customer and device rules
 
 1. Customer phone numbers are stored in raw display form and normalized form for search.

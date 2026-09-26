@@ -117,6 +117,14 @@ export function ProtectedStaffLayout({ children }: { children: ReactNode }) {
               Mẫu QC
             </Link>
           )}
+          {membership.role !== "TECHNICIAN" && (
+            <Link
+              aria-current={pathname.startsWith("/settings/staff") ? "page" : undefined}
+              href={`/settings/staff?shopId=${encodeURIComponent(membership.shopId)}`}
+            >
+              Nhân viên
+            </Link>
+          )}
         </nav>
         <div className="staff-account">
           <div>

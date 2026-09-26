@@ -20,6 +20,7 @@ describe("HTTP log redaction", () => {
         headers: {
           authorization: "Bearer access-token-secret",
           cookie: "repairflow_refresh=refresh-token-secret",
+          "x-repairflow-invitation-token": "staff-invitation-secret",
         },
         body: {
           password: "password-secret",
@@ -43,6 +44,7 @@ describe("HTTP log redaction", () => {
       "access-token-body-secret",
       "refresh-token-body-secret",
       "response-cookie-secret",
+      "staff-invitation-secret",
     ]) {
       expect(output).not.toContain(secret);
     }

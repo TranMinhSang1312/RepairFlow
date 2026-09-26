@@ -23,6 +23,14 @@ enum MembershipStatus {
   INACTIVE
 }
 
+enum StaffInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  SUPERSEDED
+  EXPIRED
+}
+
 enum DeviceType {
   PHONE
   LAPTOP
@@ -195,8 +203,11 @@ model User {
   createdAt    DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
 
-  memberships ShopMembership[]
-  sessions    AuthSession[]
+  memberships              ShopMembership[]
+  sessions                 AuthSession[]
+  staffInvitationsCreated  StaffInvitation[] @relation("StaffInvitationCreatedBy")
+  staffInvitationsAccepted StaffInvitation[] @relation("StaffInvitationAcceptedBy")
+  staffInvitationsRevoked  StaffInvitation[] @relation("StaffInvitationRevokedBy")
 
   @@map("users")
 }
@@ -235,6 +246,7 @@ model Shop {
 
   branches           Branch[]
   memberships        ShopMembership[]
+  staffInvitations   StaffInvitation[]
   customers          Customer[]
   devices            Device[]
   repairOrders       RepairOrder[]
@@ -266,13 +278,14 @@ model Branch {
 }
 
 model ShopMembership {
-  shopId    String           @db.Uuid
-  userId    String           @db.Uuid
-  role      MembershipRole
-  status    MembershipStatus @default(INVITED)
-  invitedAt DateTime         @default(now()) @db.Timestamptz(3)
-  joinedAt  DateTime?        @db.Timestamptz(3)
-  updatedAt DateTime         @updatedAt @db.Timestamptz(3)
+  shopId      String           @db.Uuid
+  userId      String           @db.Uuid
+  role        MembershipRole
+  status      MembershipStatus @default(INVITED)
+  invitedAt   DateTime         @default(now()) @db.Timestamptz(3)
+  joinedAt    DateTime?        @db.Timestamptz(3)
+  lockVersion Int              @default(0)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
 
   shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -280,7 +293,36 @@ model ShopMembership {
 
   @@id([shopId, userId])
   @@index([userId, status])
+  @@index([shopId, updatedAt(sort: Desc), userId])
   @@map("shop_memberships")
+}
+
+model StaffInvitation {
+  id               String                @id @default(uuid()) @db.Uuid
+  shopId           String                @db.Uuid
+  email            String
+  role             MembershipRole
+  status           StaffInvitationStatus @default(PENDING)
+  tokenHash        String                @unique
+  expiresAt        DateTime              @db.Timestamptz(3)
+  acceptedAt       DateTime?             @db.Timestamptz(3)
+  acceptedByUserId String?               @db.Uuid
+  revokedAt        DateTime?             @db.Timestamptz(3)
+  revokedByUserId  String?               @db.Uuid
+  supersededAt     DateTime?             @db.Timestamptz(3)
+  createdByUserId  String                @db.Uuid
+  lockVersion      Int                   @default(0)
+  createdAt        DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
+
+  shop       Shop  @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy  User  @relation("StaffInvitationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  acceptedBy User? @relation("StaffInvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  revokedBy  User? @relation("StaffInvitationRevokedBy", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([shopId, status, createdAt(sort: Desc)])
+  @@index([shopId, email, createdAt(sort: Desc)])
+  @@map("staff_invitations")
 }
 
 model Customer {

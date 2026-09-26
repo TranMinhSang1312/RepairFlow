@@ -18,6 +18,12 @@ import { IdentityService } from "./identity.service.js";
     RefreshCookieService,
     AccessTokenGuard,
   ],
-  exports: [AccessTokenGuard, TokenService],
+  exports: [
+    AccessTokenGuard,
+    TokenService,
+    IdentityService,
+    PasswordHasherService,
+    RefreshCookieService,
+  ],
 })
 export class IdentityModule {}

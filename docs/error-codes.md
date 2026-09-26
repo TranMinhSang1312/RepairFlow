@@ -40,6 +40,13 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 403 | `MEMBERSHIP_INACTIVE` | User has no active membership in the selected shop. |
 | 404 | `SHOP_NOT_FOUND` | Selected shop is unavailable to the user. |
 | 409 | `LAST_OWNER_REQUIRED` | Operation would leave the shop without an active owner. |
+| 404 | `STAFF_INVITATION_INVALID` | Invitation is unknown, revoked, superseded, or unusable. |
+| 410 | `STAFF_INVITATION_EXPIRED` | Invitation expired and must be reissued. |
+| 409 | `STAFF_INVITATION_ALREADY_PENDING` | A usable invitation already exists for this shop and email. |
+| 409 | `STAFF_INVITATION_ALREADY_ACCEPTED` | Invitation was already consumed. |
+| 409 | `STAFF_INVITATION_SIGN_IN_REQUIRED` | Recipient email now belongs to an existing identity. |
+| 403 | `STAFF_INVITATION_RECIPIENT_MISMATCH` | Signed-in user is not the invitation recipient. |
+| 409 | `STAFF_MEMBERSHIP_ALREADY_EXISTS` | Recipient already has a membership in the destination shop. |
 
 ## Repair workflow
 
