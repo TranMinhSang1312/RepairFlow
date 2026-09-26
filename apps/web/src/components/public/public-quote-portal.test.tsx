@@ -86,6 +86,8 @@ const publicOrder: PublicOrder = {
   deviceLabel: "Samsung Galaxy S25",
   status: "AWAITING_APPROVAL",
   completionOutcome: null,
+  readyAt: null,
+  returnedAt: null,
   timeline: [
     {
       type: "QUOTE_SENT",
@@ -94,6 +96,8 @@ const publicOrder: PublicOrder = {
     },
   ],
   quote: sentQuote,
+  warranty: null,
+  linkedOrders: [],
 };
 
 const acceptedResult: QuoteDecisionResult = {
@@ -137,6 +141,57 @@ describe("PublicQuotePortalScreen", () => {
     expect(consoleLog).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
     expect(getOrder).toHaveBeenCalledWith(token);
+  });
+
+  it("renders TRACK_ORDER completion and warranty without decisions or sensitive fields", async () => {
+    const trackOrder = {
+      ...publicOrder,
+      status: "COMPLETED" as const,
+      completionOutcome: "REPAIRED" as const,
+      readyAt: "2026-09-25T08:00:00.000Z",
+      returnedAt: "2026-09-26T08:00:00.000Z",
+      quote: null,
+      warranty: {
+        startsAt: "2026-09-26T08:00:00.000Z",
+        endsAt: "2026-12-26T08:00:00.000Z",
+        terms: "Bảo hành lỗi nguồn trong 90 ngày.",
+        status: "ACTIVE" as const,
+      },
+      linkedOrders: [
+        {
+          code: "RFW-2609-00001",
+          serviceType: "WARRANTY" as const,
+          status: "RECEIVED" as const,
+          completionOutcome: null,
+          receivedAt: "2026-09-26T09:00:00.000Z",
+          readyAt: null,
+          returnedAt: null,
+        },
+      ],
+      recipientName: "Không được lộ người nhận",
+      paymentDisposition: "PAY_LATER",
+      amountDue: 999_999,
+      signatureObjectKey: "private/signature.png",
+      staffUserId: "internal-user-id",
+    } as PublicOrder;
+    const getOrder = vi.fn().mockResolvedValue(trackOrder);
+    render(<PublicQuotePortalScreen api={fakeApi({ getOrder })} token={token} />);
+
+    expect(await screen.findByRole("heading", { name: "Thông tin hoàn tất" })).toBeTruthy();
+    expect(screen.getByText("Bảo hành lỗi nguồn trong 90 ngày.")).toBeTruthy();
+    expect(screen.getByText("RFW-2609-00001")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /báo giá|đồng ý|từ chối/i })).toBeNull();
+    for (const secret of [
+      token,
+      "Không được lộ người nhận",
+      "PAY_LATER",
+      "999999",
+      "private/signature.png",
+      "internal-user-id",
+    ]) {
+      expect(document.body.textContent).not.toContain(secret);
+    }
+    expect(getOrder).toHaveBeenCalledOnce();
   });
 
   it("reads the production token from client route params without rendering it", async () => {

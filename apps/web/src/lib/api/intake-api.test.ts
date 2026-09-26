@@ -596,4 +596,79 @@ describe("BrowserIntakeApi", () => {
       "qc-run-key",
     );
   });
+
+  it("maps RF-049 payment, signature, handover and warranty-follow-up requests exactly", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const orderId = "77777777-7777-4777-8777-777777777777";
+    const mediaId = "88888888-8888-4888-8888-888888888888";
+    const payment = { amount: 100_000, method: "BANK_TRANSFER" as const, reference: "BANK-001" };
+    const handover = {
+      recipientName: "Nguyễn Văn A",
+      paymentDisposition: "PAID" as const,
+      paymentNote: null,
+      signatureMediaAssetId: mediaId,
+      expectedLockVersion: 12,
+      payment,
+      warranty: { endsAt: "2027-01-01T00:00:00.000Z", terms: "Bảo hành nguồn" },
+    };
+    const followUp = {
+      eligibilityConfirmed: true as const,
+      branchId: authBody.data.user.memberships[0]!.branches[0]!.id,
+      priority: "HIGH" as const,
+      reportedProblem: "Lỗi tái phát",
+      intakeCondition: "Máy không lên nguồn",
+      consentAccepted: true as const,
+      promisedAt: null,
+      accessories: [],
+      intakeMediaAssetIds: [mediaId],
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse({ data: { payment: {}, summary: {} } }, 201))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { data: { mediaAssetId: mediaId, uploadUrl: "https://storage.test/signature" } },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ data: { trackingUrl: "https://safe.test/p/token" } }, 201),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "follow-up", code: "RF-W-0001" } }, 201));
+    const client = new BrowserIntakeApi("/api/v1", fetcher);
+    await client.restoreSession();
+    await client.createPayment(shopId, orderId, payment, "payment-key");
+    await client.uploadHandoverEvidence(
+      shopId,
+      orderId,
+      new File(["signature"], "signature.png", { type: "image/png" }),
+    );
+    await client.completeHandover(shopId, orderId, handover, "handover-key");
+    await client.createWarrantyFollowUp(shopId, orderId, followUp, "warranty-key");
+
+    expect(fetcher.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      `/api/v1/repair-orders/${orderId}/payments`,
+      `/api/v1/repair-orders/${orderId}/media/presign`,
+      "https://storage.test/signature",
+      `/api/v1/repair-orders/${orderId}/handovers`,
+      `/api/v1/repair-orders/${orderId}/warranty-orders`,
+    ]);
+    expect(JSON.parse(String(fetcher.mock.calls[2]![1]?.body))).toMatchObject({
+      purpose: "SIGNATURE",
+      originalName: "signature.png",
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[4]![1]?.body))).toEqual(handover);
+    expect(JSON.parse(String(fetcher.mock.calls[5]![1]?.body))).toEqual(followUp);
+    expect(new Headers(fetcher.mock.calls[1]![1]?.headers).get("Idempotency-Key")).toBe(
+      "payment-key",
+    );
+    expect(new Headers(fetcher.mock.calls[4]![1]?.headers).get("Idempotency-Key")).toBe(
+      "handover-key",
+    );
+    expect(new Headers(fetcher.mock.calls[5]![1]?.headers).get("Idempotency-Key")).toBe(
+      "warranty-key",
+    );
+  });
 });

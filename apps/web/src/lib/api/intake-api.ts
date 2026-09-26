@@ -35,6 +35,11 @@ import type {
   CreateQcTemplateInput,
   QcRunSubmissionResult,
   QcTemplate,
+  CompleteHandoverInput,
+  CreatePaymentInput,
+  CreateWarrantyFollowUpInput,
+  HandoverResult,
+  PaymentResult,
 } from "./types";
 
 interface DataResponse<T> {
@@ -78,6 +83,11 @@ export interface RepairOrderReadApi {
 }
 
 export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
+  uploadIntakeMedia(
+    shopId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string>;
   listTechnicians(shopId: string): Promise<ActiveTechnician[]>;
   assignTechnician(
     shopId: string,
@@ -159,6 +169,30 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
     input: CreateQcRunInput,
     idempotencyKey: string,
   ): Promise<QcRunSubmissionResult>;
+  createPayment(
+    shopId: string,
+    repairOrderId: string,
+    input: CreatePaymentInput,
+    idempotencyKey: string,
+  ): Promise<PaymentResult>;
+  uploadHandoverEvidence(
+    shopId: string,
+    repairOrderId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string>;
+  completeHandover(
+    shopId: string,
+    repairOrderId: string,
+    input: CompleteHandoverInput,
+    idempotencyKey: string,
+  ): Promise<HandoverResult>;
+  createWarrantyFollowUp(
+    shopId: string,
+    sourceOrderId: string,
+    input: CreateWarrantyFollowUpInput,
+    idempotencyKey: string,
+  ): Promise<RepairOrderDetail>;
 }
 
 export interface AuthApi {
@@ -552,6 +586,25 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
     file: File,
     onProgress?: (progress: UploadProgress) => void,
   ): Promise<string> {
+    return this.uploadOrderMedia(shopId, repairOrderId, file, "QC", onProgress);
+  }
+
+  async uploadHandoverEvidence(
+    shopId: string,
+    repairOrderId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string> {
+    return this.uploadOrderMedia(shopId, repairOrderId, file, "SIGNATURE", onProgress);
+  }
+
+  private async uploadOrderMedia(
+    shopId: string,
+    repairOrderId: string,
+    file: File,
+    purpose: "QC" | "SIGNATURE",
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string> {
     onProgress?.({ stage: "presigning" });
     const presigned = await this.request<
       DataResponse<{ mediaAssetId: string; uploadUrl: string; expiresAt: string }>
@@ -559,7 +612,7 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
       method: "POST",
       shopId,
       body: JSON.stringify({
-        purpose: "QC",
+        purpose,
         originalName: file.name,
         mimeType: file.type,
         byteSize: file.size,
@@ -578,14 +631,14 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
       throw new RepairFlowApiError(
         0,
         "MEDIA_UPLOAD_FAILED",
-        "Không thể tải bằng chứng QC. Hãy kiểm tra kết nối và thử lại.",
+        "Không thể tải bằng chứng lên. Hãy kiểm tra kết nối và thử lại.",
       );
     }
     if (!upload.ok) {
       throw new RepairFlowApiError(
         upload.status,
         "MEDIA_UPLOAD_FAILED",
-        "Không thể tải bằng chứng QC. Hãy thử lại trước khi gửi checklist.",
+        "Không thể tải bằng chứng lên. Hãy thử lại trước khi gửi.",
       );
     }
     onProgress?.({ stage: "complete" });
@@ -600,6 +653,45 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi {
   ): Promise<QcRunSubmissionResult> {
     const response = await this.request<DataResponse<QcRunSubmissionResult>>(
       `/repair-orders/${encodeURIComponent(repairOrderId)}/qc-runs`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async createPayment(
+    shopId: string,
+    repairOrderId: string,
+    input: CreatePaymentInput,
+    idempotencyKey: string,
+  ): Promise<PaymentResult> {
+    const response = await this.request<DataResponse<PaymentResult>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/payments`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async completeHandover(
+    shopId: string,
+    repairOrderId: string,
+    input: CompleteHandoverInput,
+    idempotencyKey: string,
+  ): Promise<HandoverResult> {
+    const response = await this.request<DataResponse<HandoverResult>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/handovers`,
+      { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async createWarrantyFollowUp(
+    shopId: string,
+    sourceOrderId: string,
+    input: CreateWarrantyFollowUpInput,
+    idempotencyKey: string,
+  ): Promise<RepairOrderDetail> {
+    const response = await this.request<DataResponse<RepairOrderDetail>>(
+      `/repair-orders/${encodeURIComponent(sourceOrderId)}/warranty-orders`,
       { method: "POST", shopId, idempotencyKey, body: JSON.stringify(input) },
     );
     return response.data;

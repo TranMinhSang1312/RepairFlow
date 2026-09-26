@@ -80,6 +80,7 @@ export interface NewDevice {
 }
 
 export type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type ServiceType = "STANDARD" | "WARRANTY";
 
 export type RepairOrderStatus =
   | "RECEIVED"
@@ -131,6 +132,8 @@ export interface RepairOrderReceipt {
 export interface RepairOrderSummary {
   id: string;
   code: string;
+  serviceType?: ServiceType;
+  sourceOrderId?: string | null;
   status: RepairOrderStatus;
   completionOutcome: CompletionOutcome | null;
   priority: Priority;
@@ -447,6 +450,93 @@ export interface QcRunSubmissionResult {
   orderLockVersion: number;
 }
 
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD" | "E_WALLET" | "OTHER";
+export type PaymentDisposition = "PAID" | "PARTIALLY_PAID" | "WAIVED" | "PAY_LATER";
+
+export interface CreatePaymentInput {
+  amount: number;
+  method: PaymentMethod;
+  reference?: string | null;
+}
+
+export interface Payment {
+  id: string;
+  amount: number;
+  method: PaymentMethod;
+  reference: string | null;
+  receivedByUserId: string;
+  receivedAt: string;
+}
+
+export interface PaymentSummary {
+  approvedTotal: number;
+  paidTotal: number;
+  amountDue: number;
+}
+
+export interface PaymentResult {
+  payment: Payment;
+  summary: PaymentSummary;
+}
+
+export interface Handover {
+  id: string;
+  recipientName: string;
+  paymentDisposition: PaymentDisposition;
+  paymentNote: string | null;
+  handedOverByUserId: string;
+  handedOverAt: string;
+}
+
+export interface Warranty {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  terms: string;
+}
+
+export interface LinkedOrderSummary {
+  code: string;
+  serviceType: ServiceType;
+  status: RepairOrderStatus;
+  completionOutcome: CompletionOutcome | null;
+  receivedAt: string;
+  readyAt: string | null;
+  returnedAt: string | null;
+}
+
+export interface CompleteHandoverInput {
+  recipientName: string;
+  paymentDisposition: PaymentDisposition;
+  paymentNote?: string | null;
+  signatureMediaAssetId?: string | null;
+  expectedLockVersion: number;
+  payment?: CreatePaymentInput | null;
+  warranty?: { endsAt: string; terms: string } | null;
+}
+
+export interface HandoverResult {
+  order: RepairOrderSummary;
+  handover: Handover;
+  payment: Payment | null;
+  warranty: Warranty | null;
+  paymentSummary: PaymentSummary;
+  trackingUrl: string;
+  trackingExpiresAt: string;
+}
+
+export interface CreateWarrantyFollowUpInput {
+  eligibilityConfirmed: true;
+  branchId: string;
+  priority: Priority;
+  reportedProblem: string;
+  intakeCondition: string;
+  consentAccepted: true;
+  promisedAt?: string | null;
+  accessories: IntakeAccessory[];
+  intakeMediaAssetIds: string[];
+}
+
 export interface RepairOrderDetail extends RepairOrderSummary {
   accessories: IntakeAccessoryView[];
   media: IntakeMediaView[];
@@ -458,6 +548,12 @@ export interface RepairOrderDetail extends RepairOrderSummary {
   partRequirements: PartRequirement[];
   partsUsed: PartUsed[];
   qcRuns: QcRun[];
+  paymentSummary?: PaymentSummary;
+  payments?: Payment[];
+  handover?: Handover | null;
+  warranty?: Warranty | null;
+  sourceOrder?: LinkedOrderSummary | null;
+  followUpOrders?: LinkedOrderSummary[];
   timeline: RepairOrderTimelineEvent[];
 }
 
@@ -502,8 +598,17 @@ export interface PublicOrder {
   deviceLabel: string;
   status: RepairOrderStatus;
   completionOutcome: CompletionOutcome | null;
+  readyAt: string | null;
+  returnedAt: string | null;
   timeline: PublicTimelineEvent[];
   quote: PublicQuote | null;
+  warranty: {
+    startsAt: string;
+    endsAt: string;
+    terms: string;
+    status: "ACTIVE" | "EXPIRED";
+  } | null;
+  linkedOrders: LinkedOrderSummary[];
 }
 
 export interface QuoteDecisionInput {
