@@ -34,7 +34,7 @@ export class OutboxRepository {
     now: Date,
     options: OutboxWorkerOptions,
   ): Promise<ClaimedOutboxEvent[]> {
-    if (options.eventTypes.length === 0) return [];
+    if (options.eventTypes.length === 0 || options.notificationChannels.length === 0) return [];
     const leaseExpiredAt = new Date(now.getTime() - options.leaseMs);
     return this.prisma.$transaction(async (transaction) => {
       await transaction.$executeRaw`
@@ -52,6 +52,14 @@ export class OutboxRepository {
             SELECT 1
             FROM "notification_deliveries" AS delivery
             WHERE delivery."outboxEventId" = event."id"
+              AND delivery."channel"::text IN (${Prisma.join(options.notificationChannels)})
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "notification_deliveries" AS unsupported
+            WHERE unsupported."outboxEventId" = event."id"
+              AND unsupported."status" <> 'SENT'::"NotificationStatus"
+              AND unsupported."channel"::text NOT IN (${Prisma.join(options.notificationChannels)})
           )
       `;
 
@@ -65,6 +73,14 @@ export class OutboxRepository {
               SELECT 1
               FROM "notification_deliveries" AS delivery
               WHERE delivery."outboxEventId" = event."id"
+                AND delivery."channel"::text IN (${Prisma.join(options.notificationChannels)})
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "notification_deliveries" AS unsupported
+              WHERE unsupported."outboxEventId" = event."id"
+                AND unsupported."status" <> 'SENT'::"NotificationStatus"
+                AND unsupported."channel"::text NOT IN (${Prisma.join(options.notificationChannels)})
             )
             AND (
               (
@@ -115,6 +131,7 @@ export class OutboxRepository {
           id: true,
           outboxEventId: true,
           channel: true,
+          destinationHash: true,
           status: true,
           attempts: true,
         },
@@ -125,6 +142,7 @@ export class OutboxRepository {
         current.push({
           id: delivery.id,
           channel: delivery.channel,
+          destinationHash: delivery.destinationHash,
           status: delivery.status,
           attempts: delivery.attempts,
         });
@@ -194,8 +212,9 @@ export class OutboxRepository {
     code: string,
     failedAt: Date,
     options: OutboxWorkerOptions,
+    forceDeadLetter = false,
   ): Promise<FailedClaimResult> {
-    const deadLetter = event.attempts >= options.maxAttempts;
+    const deadLetter = forceDeadLetter || event.attempts >= options.maxAttempts;
     const availableAt = deadLetter
       ? failedAt
       : new Date(

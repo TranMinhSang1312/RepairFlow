@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createPrismaClient } from "../database.js";
+import type { NotificationMessageResolver } from "./notification-message-resolver.js";
 import type { NotificationMessage, NotificationProvider } from "./notification-provider.js";
 import { NotificationOutboxHandler } from "./notification-outbox-handler.js";
 import { OutboxDeliveryError } from "./outbox-errors.js";
@@ -15,11 +16,26 @@ loadWorkspaceEnvironment();
 
 const options: OutboxWorkerOptions = {
   eventTypes: ["RF050_NOTIFICATION_TEST"],
+  notificationChannels: [NotificationChannel.EMAIL],
   batchSize: 10,
   leaseMs: 30000,
   maxAttempts: 3,
   retryBaseMs: 1000,
   retryMaxMs: 10000,
+};
+
+const staticResolver: NotificationMessageResolver = {
+  resolve: (event, delivery) =>
+    Promise.resolve({
+      outboxEventId: event.id,
+      notificationDeliveryId: delivery.id,
+      channel: "EMAIL",
+      idempotencyKey: `outbox:${event.id}:notification:${delivery.id}`,
+      to: "snapshot@example.test",
+      subject: "Test message",
+      text: "Test message",
+      html: "<p>Test message</p>",
+    }),
 };
 
 class CapturingLogger implements WorkerLogger {
@@ -92,6 +108,7 @@ describe("PostgreSQL outbox worker", () => {
     lockedAt?: Date | null;
     lockedBy?: string | null;
     deliveryStatus?: NotificationStatus;
+    deliveryChannel?: NotificationChannel;
   }) {
     const suffix = randomUUID().slice(0, 8);
     const shop = await firstClient.shop.create({
@@ -115,7 +132,7 @@ describe("PostgreSQL outbox worker", () => {
           ? {
               notifications: {
                 create: {
-                  channel: NotificationChannel.EMAIL,
+                  channel: input?.deliveryChannel ?? NotificationChannel.EMAIL,
                   destinationHash: "0".repeat(64),
                   status: input?.deliveryStatus ?? NotificationStatus.PENDING,
                   ...(input?.deliveryStatus === NotificationStatus.SENT
@@ -155,7 +172,7 @@ describe("PostgreSQL outbox worker", () => {
     let now = new Date("2026-09-26T02:00:00.000Z");
     const processor = new OutboxProcessor(
       firstRepository,
-      new NotificationOutboxHandler(firstRepository, provider),
+      new NotificationOutboxHandler(firstRepository, staticResolver, provider),
       logger,
       "worker-retry",
       options,
@@ -191,7 +208,7 @@ describe("PostgreSQL outbox worker", () => {
     let now = new Date("2026-09-26T03:00:00.000Z");
     const processor = new OutboxProcessor(
       firstRepository,
-      new NotificationOutboxHandler(firstRepository, provider),
+      new NotificationOutboxHandler(firstRepository, staticResolver, provider),
       new CapturingLogger(),
       "worker-dead-letter",
       { ...options, maxAttempts: 2 },
@@ -234,13 +251,29 @@ describe("PostgreSQL outbox worker", () => {
     ).toMatchObject({ status: OutboxStatus.PENDING, attempts: 0 });
   });
 
+  it("leaves a delivery for an unconfigured channel pending", async () => {
+    const { event } = await createOutboxFixture({
+      deliveryChannel: NotificationChannel.SMS,
+    });
+    const claimed = await firstRepository.claimBatch(
+      "email-worker",
+      new Date("2026-09-26T04:30:00.000Z"),
+      options,
+    );
+
+    expect(claimed).toHaveLength(0);
+    expect(
+      await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: event.id } }),
+    ).toMatchObject({ status: OutboxStatus.PENDING, attempts: 0 });
+  });
+
   it("skips an already sent delivery and only completes its outbox event", async () => {
     const { event } = await createOutboxFixture({ deliveryStatus: NotificationStatus.SENT });
     const provider = new ScriptedProvider();
     const now = new Date("2026-09-26T05:00:00.000Z");
     const processor = new OutboxProcessor(
       firstRepository,
-      new NotificationOutboxHandler(firstRepository, provider),
+      new NotificationOutboxHandler(firstRepository, staticResolver, provider),
       new CapturingLogger(),
       "worker-idempotent",
       options,

@@ -1,17 +1,19 @@
-import type { NotificationChannel } from "@prisma/client";
-
 export interface NotificationMessage {
   outboxEventId: string;
   notificationDeliveryId: string;
-  channel: NotificationChannel;
+  channel: "EMAIL";
   idempotencyKey: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
 }
 
 export interface NotificationProvider {
   deliver(message: NotificationMessage): Promise<{ providerMessageId: string }>;
 }
 
-/** Local/test boundary. RF-051 replaces this with a real email adapter. */
+/** Local/test boundary. It performs no network I/O and retains no message content. */
 export class DeterministicFakeNotificationProvider implements NotificationProvider {
   deliver(message: NotificationMessage): Promise<{ providerMessageId: string }> {
     return Promise.resolve({

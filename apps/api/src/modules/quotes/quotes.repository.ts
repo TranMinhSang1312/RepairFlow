@@ -291,6 +291,7 @@ export class QuotesRepository {
           tokenRecordId: input.tokenId,
           tokenScope: TokenScope.DECIDE_QUOTE,
           channel: input.channel,
+          templateKey: "QUOTE_SENT_V1",
           expiresAt: input.tokenExpiresAt,
         },
         ...(input.notification

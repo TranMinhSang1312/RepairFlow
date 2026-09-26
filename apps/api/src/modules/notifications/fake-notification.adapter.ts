@@ -1,7 +1,10 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { NotificationChannel } from "@prisma/client";
 import { parseApiEnvironment } from "@repairflow/config";
-import { createHmac } from "node:crypto";
+import {
+  deriveNotificationDestinationHash,
+  normalizeNotificationDestination,
+} from "@repairflow/security";
 
 import { ApiException } from "../../common/api-exception.js";
 import { QuoteSendChannel } from "../quotes/quote.dto.js";
@@ -29,10 +32,10 @@ export class FakeNotificationAdapter {
   plan(channel: QuoteSendChannel, snapshot: CustomerSnapshot): NotificationPlan | null {
     if (channel === QuoteSendChannel.COPY_LINK) return null;
 
-    const destination =
-      channel === QuoteSendChannel.EMAIL
-        ? this.normalizedString(snapshot.email)?.toLowerCase()
-        : this.normalizedString(snapshot.phone)?.replace(/[\s().-]/gu, "");
+    const destination = normalizeNotificationDestination(
+      channel,
+      channel === QuoteSendChannel.EMAIL ? snapshot.email : snapshot.phone,
+    );
     if (!destination) {
       throw new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY,
@@ -43,13 +46,11 @@ export class FakeNotificationAdapter {
 
     return {
       channel: NotificationChannel[channel],
-      destinationHash: createHmac("sha256", this.destinationHashSecret)
-        .update(`notification-destination:v1:${channel}:${destination}`)
-        .digest("hex"),
+      destinationHash: deriveNotificationDestinationHash(
+        this.destinationHashSecret,
+        channel,
+        destination,
+      ),
     };
-  }
-
-  private normalizedString(value: unknown): string | null {
-    return typeof value === "string" && value.trim() ? value.trim() : null;
   }
 }

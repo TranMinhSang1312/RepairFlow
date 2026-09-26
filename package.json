@@ -13,7 +13,7 @@
     "dev:apps": "pnpm --parallel --stream --filter @repairflow/web --filter @repairflow/api --filter @repairflow/worker dev",
     "dev:infra": "docker compose up -d",
     "dev:infra:down": "docker compose down",
-    "build:packages": "pnpm --filter @repairflow/contracts --filter @repairflow/config build",
+    "build:packages": "pnpm --filter @repairflow/contracts --filter @repairflow/config --filter @repairflow/security build",
     "build": "pnpm -r --if-present build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

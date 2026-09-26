@@ -3,6 +3,7 @@ import type { NotificationChannel, NotificationStatus, Prisma } from "@prisma/cl
 export interface ClaimedNotificationDelivery {
   id: string;
   channel: NotificationChannel;
+  destinationHash: string;
   status: NotificationStatus;
   attempts: number;
 }
@@ -22,6 +23,7 @@ export interface ClaimedOutboxEvent {
 
 export interface OutboxWorkerOptions {
   eventTypes: readonly string[];
+  notificationChannels: readonly NotificationChannel[];
   batchSize: number;
   leaseMs: number;
   maxAttempts: number;

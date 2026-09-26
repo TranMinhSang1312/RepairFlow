@@ -323,6 +323,7 @@ describe("quote send API", () => {
     expect(idempotency[0]!.expiresAt).toEqual(tokens[0]!.expiresAt);
     expect(outbox).toHaveLength(1);
     expect(outbox[0]).toMatchObject({ status: OutboxStatus.PENDING, attempts: 0 });
+    expect(outbox[0]!.payload).toMatchObject({ templateKey: "QUOTE_SENT_V1" });
     expect(outbox[0]!.notifications).toHaveLength(0);
     expect(events.map(({ eventType }) => eventType)).toEqual(
       expect.arrayContaining(["ORDER_STATUS_CHANGED", "QUOTE_SENT"]),

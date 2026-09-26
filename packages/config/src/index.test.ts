@@ -11,6 +11,7 @@ describe("environment parsing", () => {
     const web = parseWebEnvironment({});
     const worker = parseWorkerEnvironment({
       DATABASE_URL: "postgresql://localhost/repairflow",
+      ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
     });
 
     expect(api.API_PORT).toBe(3001);
@@ -32,6 +33,7 @@ describe("environment parsing", () => {
     expect(() =>
       parseWorkerEnvironment({
         DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
         WORKER_MAX_ATTEMPTS: "0",
       }),
     ).toThrow();
@@ -42,15 +44,43 @@ describe("environment parsing", () => {
       parseWorkerEnvironment({
         NODE_ENV: "production",
         DATABASE_URL: "postgresql://localhost/repairflow",
+        PUBLIC_TOKEN_SECRET: "production-public-token-secret-at-least-32-chars",
       }),
     ).toThrow();
     expect(
       parseWorkerEnvironment({
         NODE_ENV: "production",
         DATABASE_URL: "postgresql://localhost/repairflow",
+        PUBLIC_TOKEN_SECRET: "production-public-token-secret-at-least-32-chars",
+        RESEND_API_KEY: "resend-test-key",
+        RESEND_FROM_EMAIL: "RepairFlow <notify@example.test>",
         WORKER_NOTIFICATION_PROVIDER: "email",
       }).WORKER_NOTIFICATION_PROVIDER,
     ).toBe("email");
+  });
+
+  it("requires token derivation and email provider credentials", () => {
+    expect(() =>
+      parseWorkerEnvironment({
+        DATABASE_URL: "postgresql://localhost/repairflow",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseWorkerEnvironment({
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+        WORKER_NOTIFICATION_PROVIDER: "email",
+      }),
+    ).toThrow();
+    expect(
+      parseWorkerEnvironment({
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+        WORKER_NOTIFICATION_PROVIDER: "email",
+        RESEND_API_KEY: "resend-test-key",
+        RESEND_FROM_EMAIL: "RepairFlow <notify@example.test>",
+      }).RESEND_TIMEOUT_MS,
+    ).toBe(10000);
   });
 
   it("rejects a missing database URL", () => {

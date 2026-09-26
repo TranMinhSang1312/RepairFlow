@@ -1,5 +1,6 @@
 import { NotificationStatus } from "@prisma/client";
 
+import type { NotificationMessageResolver } from "./notification-message-resolver.js";
 import type { NotificationProvider } from "./notification-provider.js";
 import { OutboxDeliveryError, safeOutboxErrorCode } from "./outbox-errors.js";
 import type { OutboxRepository } from "./outbox-repository.js";
@@ -12,6 +13,7 @@ export interface OutboxHandler {
 export class NotificationOutboxHandler implements OutboxHandler {
   constructor(
     private readonly repository: OutboxRepository,
+    private readonly resolver: NotificationMessageResolver,
     private readonly provider: NotificationProvider,
   ) {}
 
@@ -19,12 +21,8 @@ export class NotificationOutboxHandler implements OutboxHandler {
     for (const delivery of event.notifications) {
       if (delivery.status === NotificationStatus.SENT) continue;
       try {
-        const result = await this.provider.deliver({
-          outboxEventId: event.id,
-          notificationDeliveryId: delivery.id,
-          channel: delivery.channel,
-          idempotencyKey: `outbox:${event.id}:notification:${delivery.id}`,
-        });
+        const message = await this.resolver.resolve(event, delivery, now);
+        const result = await this.provider.deliver(message);
         await this.repository.markDeliverySent(
           event.id,
           delivery.id,
@@ -34,7 +32,7 @@ export class NotificationOutboxHandler implements OutboxHandler {
       } catch (error) {
         const code = safeOutboxErrorCode(error);
         await this.repository.markDeliveryFailed(event.id, delivery.id, code);
-        throw new OutboxDeliveryError(code);
+        throw error instanceof OutboxDeliveryError ? error : new OutboxDeliveryError(code);
       }
     }
   }

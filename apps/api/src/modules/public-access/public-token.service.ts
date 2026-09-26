@@ -1,21 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import { parseApiEnvironment } from "@repairflow/config";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import {
+  buildPublicTokenUrl,
+  deriveQuotePublicToken,
+  deriveTrackPublicToken,
+  hashPublicToken,
+  type QuotePublicTokenMetadata,
+  type TrackPublicTokenMetadata,
+} from "@repairflow/security";
+import { createHmac, randomUUID } from "node:crypto";
 
-export interface QuoteTokenMetadata {
-  tokenId: string;
-  shopId: string;
-  repairOrderId: string;
-  quoteVersionId: string;
-  expiresAt: string;
-}
-
-export interface TrackTokenMetadata {
-  tokenId: string;
-  shopId: string;
-  repairOrderId: string;
-  expiresAt: string;
-}
+export type QuoteTokenMetadata = QuotePublicTokenMetadata;
+export type TrackTokenMetadata = TrackPublicTokenMetadata;
 
 @Injectable()
 export class PublicTokenService {
@@ -37,32 +33,15 @@ export class PublicTokenService {
   }
 
   deriveRawToken(metadata: QuoteTokenMetadata): string {
-    const stableMetadata = JSON.stringify({
-      version: 1,
-      tokenId: metadata.tokenId,
-      shopId: metadata.shopId,
-      repairOrderId: metadata.repairOrderId,
-      quoteVersionId: metadata.quoteVersionId,
-      scope: "DECIDE_QUOTE",
-      expiresAt: metadata.expiresAt,
-    });
-    return createHmac("sha256", this.secret).update(stableMetadata).digest("base64url");
+    return deriveQuotePublicToken(this.secret, metadata);
   }
 
   deriveTrackRawToken(metadata: TrackTokenMetadata): string {
-    const stableMetadata = JSON.stringify({
-      version: 1,
-      tokenId: metadata.tokenId,
-      shopId: metadata.shopId,
-      repairOrderId: metadata.repairOrderId,
-      scope: "TRACK_ORDER",
-      expiresAt: metadata.expiresAt,
-    });
-    return createHmac("sha256", this.secret).update(stableMetadata).digest("base64url");
+    return deriveTrackPublicToken(this.secret, metadata);
   }
 
   hash(rawToken: string): string {
-    return createHash("sha256").update(rawToken).digest("hex");
+    return hashPublicToken(rawToken);
   }
 
   requestFingerprint(ip: string, userAgent: string): string {
@@ -78,13 +57,11 @@ export class PublicTokenService {
   }
 
   publicUrl(metadata: QuoteTokenMetadata): string {
-    const rawToken = this.deriveRawToken(metadata);
-    return new URL(`/p/${encodeURIComponent(rawToken)}`, this.publicWebUrl).toString();
+    return buildPublicTokenUrl(this.publicWebUrl, this.deriveRawToken(metadata));
   }
 
   trackPublicUrl(metadata: TrackTokenMetadata): string {
-    const rawToken = this.deriveTrackRawToken(metadata);
-    return new URL(`/p/${encodeURIComponent(rawToken)}`, this.publicWebUrl).toString();
+    return buildPublicTokenUrl(this.publicWebUrl, this.deriveTrackRawToken(metadata));
   }
 
   private privateHash(purpose: string, value: string): string {
