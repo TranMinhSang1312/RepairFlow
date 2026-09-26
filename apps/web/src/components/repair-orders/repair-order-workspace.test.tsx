@@ -123,14 +123,19 @@ function fakeApi(overrides: Partial<RepairOrderWorkspaceApi> = {}): RepairOrderW
     listQcTemplates: vi.fn().mockResolvedValue([]),
     createQcTemplate: vi.fn(),
     deactivateQcTemplate: vi.fn(),
+    uploadIntakeMedia: vi.fn(),
     uploadQcEvidence: vi.fn(),
     submitQcRun: vi.fn(),
+    createPayment: vi.fn(),
+    uploadHandoverEvidence: vi.fn(),
+    completeHandover: vi.fn(),
+    createWarrantyFollowUp: vi.fn(),
     ...overrides,
   };
 }
 
 describe("RepairOrderWorkspaceScreen", () => {
-  it("restores Work and QC tabs from URL and serializes changes without dropping shopId", async () => {
+  it("restores Work, QC and Handover tabs from URL without dropping shopId", async () => {
     const user = userEvent.setup();
     const replaceUrl = vi.fn();
     const { rerender } = render(
@@ -159,6 +164,19 @@ describe("RepairOrderWorkspaceScreen", () => {
     expect(
       await screen.findByRole("heading", { name: "Các lần kiểm tra chất lượng" }),
     ).toBeTruthy();
+
+    await user.click(screen.getByRole("tab", { name: /^Bàn giao/ }));
+    expect(replaceUrl).toHaveBeenCalledWith(`/orders/${orderId}?shopId=${shopId}&tab=handover`);
+    rerender(
+      <RepairOrderWorkspaceScreen
+        api={fakeApi()}
+        repairOrderId={orderId}
+        replaceUrl={replaceUrl}
+        search={`shopId=${shopId}&tab=handover`}
+      />,
+    );
+    expect(await screen.findByRole("heading", { name: "Lịch sử thanh toán" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Phiếu nguồn và các lần quay lại" })).toBeTruthy();
 
     rerender(
       <RepairOrderWorkspaceScreen

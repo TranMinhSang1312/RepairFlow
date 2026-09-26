@@ -1995,6 +1995,248 @@ body > main.auth-shell {
   }
 }
 
+.handover-workspace,
+.handover-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.handover-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.money-card {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.money-card span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.money-card strong {
+  font-size: clamp(1.25rem, 3vw, 2rem);
+}
+
+.payment-list,
+.linked-order-list,
+.upload-list {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.payment-list li,
+.linked-order-list li,
+.upload-list li {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+}
+
+.payment-list span,
+.payment-list time,
+.linked-order-list span,
+.upload-list span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.handover-form-grid,
+.warranty-form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1rem 0;
+}
+
+.handover-wide-field,
+.warranty-wide-field {
+  grid-column: 1 / -1;
+}
+
+.handover-facts,
+.public-completion-facts {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1rem 0;
+}
+
+.handover-facts div,
+.public-completion-facts div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.handover-facts dt,
+.public-completion-facts dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.handover-dialog-backdrop {
+  align-items: center;
+  background: rgb(8 23 17 / 62%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 100;
+}
+
+.handover-dialog {
+  background: var(--surface);
+  border-radius: 1rem;
+  box-shadow: 0 24px 72px rgb(4 18 12 / 28%);
+  max-height: calc(100dvh - 2rem);
+  max-width: 42rem;
+  overflow: auto;
+  padding: clamp(1rem, 4vw, 2rem);
+  width: 100%;
+}
+
+.handover-dialog-actions,
+.warranty-actions,
+.section-inline-heading,
+.tracking-link-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.warranty-follow-up-card,
+.warranty-form,
+.warranty-accessories,
+.warranty-media {
+  display: grid;
+  gap: 1rem;
+}
+
+.source-snapshot {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.source-snapshot small {
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
+.accessory-row {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+}
+
+.warranty-success {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.public-completion-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1.2rem;
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 4vw, 1.5rem);
+}
+
+.public-warranty-summary {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.public-warranty-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+}
+
+.public-linked-orders ul {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.public-linked-orders li {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-top: 0.6rem;
+}
+
+@media (max-width: 600px) {
+  .handover-summary-grid,
+  .handover-form-grid,
+  .warranty-form-grid,
+  .handover-facts,
+  .public-completion-facts,
+  .accessory-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .handover-wide-field,
+  .warranty-wide-field {
+    grid-column: auto;
+  }
+
+  .payment-list li,
+  .linked-order-list li,
+  .upload-list li,
+  .public-linked-orders li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .handover-dialog-actions .button,
+  .warranty-actions .button {
+    width: 100%;
+  }
+
+  .handover-workspace,
+  .handover-panel,
+  .warranty-follow-up-card,
+  .public-completion-card {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* RF-046 quality-control workspace and immutable template settings */
 .qc-panel,
 .qc-checklist,

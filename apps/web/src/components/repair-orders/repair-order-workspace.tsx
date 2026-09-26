@@ -21,9 +21,11 @@ import {
   type WorkspaceTab,
 } from "@/lib/repair-orders/workspace-tabs";
 import { DiagnosisPanel } from "./diagnosis-panel";
+import { HandoverPanel } from "./handover-panel";
 import { QcPanel } from "./qc-panel";
 import { QuotePanel } from "./quote-panel";
 import { RepairOrderActions } from "./repair-order-actions";
+import { WarrantyFollowUpFlow } from "./warranty-follow-up-flow";
 import { WorkPanel } from "./work-panel";
 
 type LoadState = "loading" | "success" | "error";
@@ -356,6 +358,15 @@ export function RepairOrderWorkspaceScreen({
           QC <span>{order.qcRuns.length}</span>
         </button>
         <button
+          aria-controls="handover-panel"
+          aria-selected={tab === "handover"}
+          onClick={() => changeTab("handover")}
+          role="tab"
+          type="button"
+        >
+          Bàn giao <span>{order.payments?.length ?? 0}</span>
+        </button>
+        <button
           aria-controls="timeline-panel"
           aria-selected={tab === "timeline"}
           onClick={() => changeTab("timeline")}
@@ -546,6 +557,25 @@ export function RepairOrderWorkspaceScreen({
             order={order}
             shopId={shopId}
             userId={auth.user.id}
+          />
+        </div>
+      )}
+
+      {tab === "handover" && (
+        <div className="handover-workspace" id="handover-panel" role="tabpanel">
+          <HandoverPanel
+            api={api}
+            membership={membership}
+            onReload={() => loadWorkspace(true)}
+            order={order}
+            shopId={shopId}
+          />
+          <WarrantyFollowUpFlow
+            api={api}
+            membership={membership}
+            onReload={() => loadWorkspace(true)}
+            order={order}
+            shopId={shopId}
           />
         </div>
       )}

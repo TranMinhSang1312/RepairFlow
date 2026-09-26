@@ -58,6 +58,14 @@ const ITEM_KIND_LABELS = {
   FEE: "Chi phí",
 } as const;
 
+const COMPLETION_OUTCOME_LABELS = {
+  REPAIRED: "Đã sửa chữa",
+  DECLINED_QUOTE: "Khách hàng từ chối báo giá",
+  UNREPAIRABLE: "Không thể sửa chữa",
+  NO_FAULT_FOUND: "Không phát hiện lỗi",
+  CUSTOMER_CANCELLED: "Khách hàng hủy yêu cầu",
+} as const;
+
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -547,6 +555,66 @@ export function PublicQuotePortalScreen({ token, api: suppliedApi }: PublicQuote
           </div>
         </dl>
       </section>
+
+      {(order.readyAt ||
+        order.returnedAt ||
+        order.completionOutcome ||
+        order.warranty ||
+        order.linkedOrders.length > 0) && (
+        <section className="public-completion-card" aria-labelledby="public-completion-heading">
+          <header>
+            <p className="eyebrow">Bàn giao và bảo hành</p>
+            <h2 id="public-completion-heading">Thông tin hoàn tất</h2>
+          </header>
+          <dl className="public-completion-facts">
+            {order.readyAt && (
+              <div>
+                <dt>Sẵn sàng nhận máy</dt>
+                <dd>{formatDateTime(order.readyAt)}</dd>
+              </div>
+            )}
+            {order.returnedAt && (
+              <div>
+                <dt>Đã bàn giao</dt>
+                <dd>{formatDateTime(order.returnedAt)}</dd>
+              </div>
+            )}
+            {order.completionOutcome && (
+              <div>
+                <dt>Kết quả</dt>
+                <dd>{COMPLETION_OUTCOME_LABELS[order.completionOutcome]}</dd>
+              </div>
+            )}
+          </dl>
+          {order.warranty && (
+            <article className="public-warranty-summary">
+              <div>
+                <strong>
+                  Bảo hành {order.warranty.status === "ACTIVE" ? "còn hiệu lực" : "đã hết hạn"}
+                </strong>
+                <span>
+                  {formatDateTime(order.warranty.startsAt)} –{" "}
+                  {formatDateTime(order.warranty.endsAt)}
+                </span>
+              </div>
+              <p>{order.warranty.terms}</p>
+            </article>
+          )}
+          {order.linkedOrders.length > 0 && (
+            <div className="public-linked-orders">
+              <h3>Phiếu có liên quan</h3>
+              <ul>
+                {order.linkedOrders.map((item) => (
+                  <li key={`${item.code}-${item.receivedAt}`}>
+                    <strong>{item.code}</strong>
+                    <span>{STATUS_LABELS[item.status]}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       {quote ? (
         <section className="public-quote-card" aria-labelledby="public-quote-heading">

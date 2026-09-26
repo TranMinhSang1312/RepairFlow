@@ -6,6 +6,7 @@ describe("workspace tabs", () => {
   it("parses a durable Work deep link", () => {
     expect(parseWorkspaceTab("?shopId=shop-1&tab=work")).toBe("work");
     expect(parseWorkspaceTab("?shopId=shop-1&tab=qc")).toBe("qc");
+    expect(parseWorkspaceTab("?shopId=shop-1&tab=handover")).toBe("handover");
   });
 
   it("falls back to overview for missing or invalid tabs", () => {
@@ -19,6 +20,9 @@ describe("workspace tabs", () => {
     );
     expect(workspaceTabUrl("order/1", "?shopId=shop-1&from=board", "qc")).toBe(
       "/orders/order%2F1?shopId=shop-1&from=board&tab=qc",
+    );
+    expect(workspaceTabUrl("order/1", "?shopId=shop-1&from=board", "handover")).toBe(
+      "/orders/order%2F1?shopId=shop-1&from=board&tab=handover",
     );
   });
 });
