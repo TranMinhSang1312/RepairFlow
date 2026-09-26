@@ -368,7 +368,7 @@ describe("staff membership management API", () => {
         .send({ status: "INACTIVE", expectedLockVersion: firstCurrent.lockVersion }),
       request(app.getHttpServer())
         .patch(`/api/v1/staff-memberships/${second.userId}`)
-        .set("Authorization", `Bearer ${owner.token}`)
+        .set("Authorization", `Bearer ${second.token}`)
         .set("X-Shop-Id", owner.shopId)
         .set("Idempotency-Key", `rf039-concurrent-b-${randomUUID()}`)
         .send({ status: "INACTIVE", expectedLockVersion: secondCurrent.lockVersion }),
