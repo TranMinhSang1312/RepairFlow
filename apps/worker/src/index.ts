@@ -4,11 +4,13 @@ import { hostname } from "node:os";
 import pino from "pino";
 
 import { createPrismaClient } from "./database.js";
+import { DatabaseNotificationMessageResolver } from "./outbox/notification-message-resolver.js";
 import { DeterministicFakeNotificationProvider } from "./outbox/notification-provider.js";
 import { NotificationOutboxHandler } from "./outbox/notification-outbox-handler.js";
 import { OutboxLoop } from "./outbox/outbox-loop.js";
 import { OutboxProcessor } from "./outbox/outbox-processor.js";
 import { OutboxRepository } from "./outbox/outbox-repository.js";
+import { ResendEmailNotificationProvider } from "./outbox/resend-email.provider.js";
 import { workerHealth } from "./worker";
 
 loadWorkspaceEnvironment();
@@ -22,15 +24,31 @@ const logger = pino({
 });
 
 const workerId = `${hostname()}:${process.pid}`;
-if (environment.WORKER_NOTIFICATION_PROVIDER !== "fake") {
-  throw new Error("WORKER_NOTIFICATION_PROVIDER_NOT_IMPLEMENTED");
-}
 const prisma = createPrismaClient(environment.DATABASE_URL);
 const repository = new OutboxRepository(prisma);
-const provider = new DeterministicFakeNotificationProvider();
-const handler = new NotificationOutboxHandler(repository, provider);
+const publicTokenSecret = environment.PUBLIC_TOKEN_SECRET ?? environment.ACCESS_TOKEN_SECRET;
+if (!publicTokenSecret) throw new Error("WORKER_PUBLIC_TOKEN_SECRET_REQUIRED");
+const resolver = new DatabaseNotificationMessageResolver(
+  prisma,
+  publicTokenSecret,
+  environment.PUBLIC_WEB_URL,
+);
+const provider =
+  environment.WORKER_NOTIFICATION_PROVIDER === "fake"
+    ? new DeterministicFakeNotificationProvider()
+    : new ResendEmailNotificationProvider({
+        apiUrl: environment.RESEND_API_URL,
+        apiKey: environment.RESEND_API_KEY!,
+        from: environment.RESEND_FROM_EMAIL!,
+        ...(environment.RESEND_REPLY_TO_EMAIL
+          ? { replyTo: environment.RESEND_REPLY_TO_EMAIL }
+          : {}),
+        timeoutMs: environment.RESEND_TIMEOUT_MS,
+      });
+const handler = new NotificationOutboxHandler(repository, resolver, provider);
 const processor = new OutboxProcessor(repository, handler, logger, workerId, {
   eventTypes: ["QUOTE_SENT"],
+  notificationChannels: ["EMAIL"],
   batchSize: environment.WORKER_BATCH_SIZE,
   leaseMs: environment.WORKER_LEASE_MS,
   maxAttempts: environment.WORKER_MAX_ATTEMPTS,

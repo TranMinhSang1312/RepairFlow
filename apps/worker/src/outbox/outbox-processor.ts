@@ -1,4 +1,4 @@
-import { safeOutboxErrorCode } from "./outbox-errors.js";
+import { isRetryableOutboxError, safeOutboxErrorCode } from "./outbox-errors.js";
 import type { OutboxHandler } from "./notification-outbox-handler.js";
 import type { OutboxRepository } from "./outbox-repository.js";
 import type {
@@ -58,6 +58,7 @@ export class OutboxProcessor {
         errorCode,
         this.clock(),
         this.options,
+        !isRetryableOutboxError(error),
       );
       this.logger.warn(
         {

@@ -2,6 +2,10 @@ import { z } from "zod";
 
 const nodeEnvironment = z.enum(["development", "test", "production"]);
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
+const optionalNonEmptyString = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(1).optional(),
+);
 
 const apiEnvironmentSchema = z
   .object({
@@ -66,8 +70,23 @@ const workerEnvironmentSchema = z
     WORKER_RETRY_BASE_MS: z.coerce.number().int().min(250).max(3600000).default(1000),
     WORKER_RETRY_MAX_MS: z.coerce.number().int().min(250).max(86400000).default(60000),
     WORKER_NOTIFICATION_PROVIDER: z.enum(["fake", "email"]).default("fake"),
+    ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
+    PUBLIC_TOKEN_SECRET: z.string().min(32).optional(),
+    PUBLIC_WEB_URL: z.string().url().default("http://localhost:3000"),
+    RESEND_API_URL: z.string().url().default("https://api.resend.com/emails"),
+    RESEND_API_KEY: optionalNonEmptyString,
+    RESEND_FROM_EMAIL: optionalNonEmptyString,
+    RESEND_REPLY_TO_EMAIL: optionalNonEmptyString,
+    RESEND_TIMEOUT_MS: z.coerce.number().int().min(500).max(60000).default(10000),
   })
   .superRefine((environment, context) => {
+    if (!environment.PUBLIC_TOKEN_SECRET && !environment.ACCESS_TOKEN_SECRET) {
+      context.addIssue({
+        code: "custom",
+        path: ["PUBLIC_TOKEN_SECRET"],
+        message: "Worker requires PUBLIC_TOKEN_SECRET or ACCESS_TOKEN_SECRET.",
+      });
+    }
     if (
       environment.NODE_ENV === "production" &&
       environment.WORKER_NOTIFICATION_PROVIDER === "fake"
@@ -78,6 +97,33 @@ const workerEnvironmentSchema = z
         message:
           "Production cannot mark notifications sent through the deterministic fake provider.",
       });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      (!environment.PUBLIC_TOKEN_SECRET ||
+        environment.PUBLIC_TOKEN_SECRET.startsWith("replace-with-"))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["PUBLIC_TOKEN_SECRET"],
+        message: "Production worker requires a dedicated public-token derivation secret.",
+      });
+    }
+    if (environment.WORKER_NOTIFICATION_PROVIDER === "email") {
+      if (!environment.RESEND_API_KEY) {
+        context.addIssue({
+          code: "custom",
+          path: ["RESEND_API_KEY"],
+          message: "Email provider requires RESEND_API_KEY.",
+        });
+      }
+      if (!environment.RESEND_FROM_EMAIL) {
+        context.addIssue({
+          code: "custom",
+          path: ["RESEND_FROM_EMAIL"],
+          message: "Email provider requires RESEND_FROM_EMAIL.",
+        });
+      }
     }
   });
 
