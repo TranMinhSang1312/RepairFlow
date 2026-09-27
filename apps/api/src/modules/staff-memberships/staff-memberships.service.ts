@@ -16,6 +16,7 @@ import { PasswordHasherService } from "../../common/auth/password-hasher.service
 import { RateLimiterService } from "../../common/auth/rate-limiter.service.js";
 import { IdempotencyService } from "../../common/idempotency/idempotency.service.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
+import { FakeNotificationAdapter } from "../notifications/fake-notification.adapter.js";
 import { PrismaService } from "../../infra/database/prisma.service.js";
 import { IdentityService } from "../identity/identity.service.js";
 import type { IssuedAuth } from "../identity/identity.types.js";
@@ -69,6 +70,7 @@ export class StaffMembershipsService {
     private readonly prisma: PrismaService,
     private readonly idempotency: IdempotencyService,
     private readonly tokens: StaffInvitationTokenService,
+    private readonly notifications: FakeNotificationAdapter,
     private readonly passwordHasher: PasswordHasherService,
     private readonly identity: IdentityService,
     private readonly rateLimiter: RateLimiterService,
@@ -184,6 +186,7 @@ export class StaffMembershipsService {
             createdByUserId: tenant.userId,
           },
         });
+        await this.enqueueInvitationNotification(tx, invitation, metadata);
         await this.audit(tx, tenant, "staff.invitation_created", invitation.id, null, {
           role: invitation.role,
           emailFingerprint: this.tokens.emailFingerprint(email),
@@ -244,6 +247,7 @@ export class StaffMembershipsService {
             createdByUserId: tenant.userId,
           },
         });
+        await this.enqueueInvitationNotification(tx, invitation, metadata);
         await this.audit(
           tx,
           tenant,
@@ -618,6 +622,34 @@ export class StaffMembershipsService {
       createdAt: item.createdAt.toISOString(),
       lockVersion: item.lockVersion,
     };
+  }
+
+  private enqueueInvitationNotification(
+    tx: Prisma.TransactionClient,
+    invitation: StaffInvitationRecord,
+    metadata: StaffInvitationTokenMetadata,
+  ) {
+    const notification = this.notifications.requiredEmail(invitation.email);
+    return tx.outboxEvent.create({
+      data: {
+        shopId: invitation.shopId,
+        eventType: "STAFF_INVITATION_CREATED",
+        aggregateType: "STAFF_INVITATION",
+        aggregateId: invitation.id,
+        payload: {
+          invitationId: invitation.id,
+          expiresAt: metadata.expiresAt,
+          channel: notification.channel,
+          templateKey: "STAFF_INVITATION_V1",
+        },
+        notifications: {
+          create: {
+            channel: notification.channel,
+            destinationHash: notification.destinationHash,
+          },
+        },
+      },
+    });
   }
 
   private async audit(

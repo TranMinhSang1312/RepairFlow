@@ -221,7 +221,11 @@ describe("RF-047 atomic handover API", () => {
         reportedProblem: "Handover integration",
         intakeCondition: "Good",
         consentAcknowledgedAt: new Date(),
-        customerSnapshot: { name: "Handover customer", phone: "0900000301" },
+        customerSnapshot: {
+          name: "Handover customer",
+          phone: "0900000301",
+          email: `handover-${number}@example.test`,
+        },
         deviceSnapshot: { type: DeviceType.LAPTOP, brand: "Test", model: "Handover" },
         createdByUserId: actorId,
       },
@@ -354,9 +358,20 @@ describe("RF-047 atomic handover API", () => {
       new Date(response.body.data.handover.handedOverAt as string).getTime() +
         365 * 24 * 60 * 60 * 1_000,
     );
-    expect(
-      await prisma.notificationDelivery.count({ where: { outboxEvent: { shopId: shopAId } } }),
-    ).toBe(0);
+    const deliveryEvent = await prisma.outboxEvent.findFirstOrThrow({
+      where: { shopId: shopAId, aggregateId: orderId, eventType: "REPAIR_ORDER_COMPLETED" },
+      include: { notifications: true },
+    });
+    expect(deliveryEvent.notifications).toEqual([
+      expect.objectContaining({ channel: "EMAIL", status: "PENDING" }),
+    ]);
+    expect(deliveryEvent.payload).toMatchObject({
+      repairOrderId: orderId,
+      tokenRecordId: tokens.at(-1)!.id,
+      tokenScope: "TRACK_ORDER",
+      channel: "EMAIL",
+      templateKey: "HANDOVER_COMPLETED_V1",
+    });
 
     const rawToken = new URL(response.body.data.trackingUrl as string).pathname.split("/").at(-1)!;
     const publicRead = await request(app.getHttpServer()).get(`/public/v1/orders/${rawToken}`);
@@ -388,6 +403,7 @@ describe("RF-047 atomic handover API", () => {
     expect(stored).not.toContain(response.body.data.trackingUrl as string);
     expect(stored).not.toContain("0900000301");
     expect(stored).not.toContain("final receipt");
+    expect(stored).not.toContain("handover-1@example.test");
   });
 
   it("replays the same URL, rejects mismatch, and never mints after replay expiry", async () => {

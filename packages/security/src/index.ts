@@ -15,6 +15,11 @@ export interface TrackPublicTokenMetadata {
   expiresAt: string;
 }
 
+export interface StaffInvitationTokenMetadata {
+  invitationId: string;
+  expiresAt: string;
+}
+
 export type NotificationDestinationChannel = "EMAIL" | "ZALO" | "SMS";
 
 export function deriveQuotePublicToken(secret: string, metadata: QuotePublicTokenMetadata): string {
@@ -48,12 +53,32 @@ export function deriveTrackPublicToken(secret: string, metadata: TrackPublicToke
     .digest("base64url");
 }
 
+export function deriveStaffInvitationToken(
+  secret: string,
+  metadata: StaffInvitationTokenMetadata,
+): string {
+  return createHmac("sha256", secret)
+    .update(
+      JSON.stringify({
+        version: 1,
+        purpose: "ACCEPT_STAFF_INVITATION",
+        invitationId: metadata.invitationId,
+        expiresAt: metadata.expiresAt,
+      }),
+    )
+    .digest("base64url");
+}
+
 export function hashPublicToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
 export function buildPublicTokenUrl(publicWebUrl: string, rawToken: string): string {
   return new URL(`/p/${encodeURIComponent(rawToken)}`, publicWebUrl).toString();
+}
+
+export function buildStaffInvitationUrl(publicWebUrl: string, rawToken: string): string {
+  return new URL(`/join/${encodeURIComponent(rawToken)}`, publicWebUrl).toString();
 }
 
 export function normalizeNotificationDestination(

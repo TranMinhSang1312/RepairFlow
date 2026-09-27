@@ -14,6 +14,7 @@ import { ApiException } from "../../common/api-exception.js";
 import { IdempotencyService } from "../../common/idempotency/idempotency.service.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import { MediaUploadVerifier } from "../media/media-upload-verifier.service.js";
+import { FakeNotificationAdapter } from "../notifications/fake-notification.adapter.js";
 import {
   calculatePaymentSummary,
   toPaymentSummaryView,
@@ -45,6 +46,7 @@ export class HandoversService {
     private readonly mediaVerifier: MediaUploadVerifier,
     private readonly tokens: PublicTokenService,
     private readonly stateMachine: RepairOrderStateMachineService,
+    private readonly notifications: FakeNotificationAdapter,
   ) {}
 
   async complete(
@@ -229,6 +231,10 @@ export class HandoversService {
           handedOverAt,
           warrantyEndsAt: warranty?.endsAt ?? null,
           paymentRecorded: payment !== null,
+          tracking,
+          notification: this.notifications.optionalEmail(
+            this.customerSnapshotEmail(order.customerSnapshot),
+          ),
         });
 
         return {
@@ -377,6 +383,12 @@ export class HandoversService {
       );
     }
     return { endsAt, terms: warranty.terms.trim() };
+  }
+
+  private customerSnapshotEmail(snapshot: unknown): unknown {
+    return snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      ? (snapshot as Record<string, unknown>).email
+      : null;
   }
 
   private assertDisposition(

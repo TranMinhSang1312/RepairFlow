@@ -17,6 +17,7 @@ import {
 import { ApiException } from "../../../common/api-exception.js";
 import { IdempotencyService } from "../../../common/idempotency/idempotency.service.js";
 import type { TenantContext } from "../../../common/tenant/tenant-context.js";
+import { FakeNotificationAdapter } from "../../notifications/fake-notification.adapter.js";
 import { toRepairOrderView, type RepairOrderResponse } from "../repair-order.types.js";
 import type { TransitionRepairOrderDto } from "./transition-repair-order.dto.js";
 import {
@@ -44,6 +45,7 @@ export class RepairOrderStateMachineService {
   constructor(
     private readonly repository: RepairOrderStateMachineRepository,
     private readonly idempotency: IdempotencyService,
+    private readonly notifications: FakeNotificationAdapter,
   ) {}
 
   transition(
@@ -121,6 +123,18 @@ export class RepairOrderStateMachineService {
       );
     }
     await this.repository.appendEvent(transaction, command, order.status);
+    if (command.targetStatus === RepairOrderStatus.READY_FOR_PICKUP) {
+      const notification = this.notifications.optionalEmail(
+        this.customerSnapshotEmail(order.customerSnapshot),
+      );
+      if (notification) {
+        await this.repository.createReadyNotification(transaction, {
+          shopId: command.shopId,
+          repairOrderId: command.repairOrderId,
+          notification,
+        });
+      }
+    }
 
     const result = await this.repository.findForTransition(
       transaction,
@@ -656,6 +670,12 @@ export class RepairOrderStateMachineService {
 
   private guardFailed(message: string): ApiException {
     return new ApiException(HttpStatus.CONFLICT, "REPAIR_ORDER_GUARD_FAILED", message);
+  }
+
+  private customerSnapshotEmail(snapshot: unknown): unknown {
+    return snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      ? (snapshot as Record<string, unknown>).email
+      : null;
   }
 
   private isUuid(value: string): boolean {

@@ -1,8 +1,10 @@
-import { NotificationChannel, NotificationStatus } from "@prisma/client";
+import { NotificationChannel, NotificationStatus, StaffInvitationStatus } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import {
   deriveNotificationDestinationHash,
   deriveQuotePublicToken,
+  deriveStaffInvitationToken,
+  deriveTrackPublicToken,
   hashPublicToken,
 } from "@repairflow/security";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +12,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseNotificationMessageResolver } from "./notification-message-resolver.js";
 import { OutboxDeliveryError } from "./outbox-errors.js";
 import { QUOTE_SENT_TEMPLATE_KEY } from "./quote-sent-email.template.js";
+import {
+  HANDOVER_COMPLETED_TEMPLATE_KEY,
+  REPAIR_ORDER_READY_TEMPLATE_KEY,
+} from "./repair-order-email.templates.js";
+import { STAFF_INVITATION_TEMPLATE_KEY } from "./staff-invitation-email.template.js";
 import type { ClaimedNotificationDelivery, ClaimedOutboxEvent } from "./outbox.types.js";
 
 const secret = "test-secret-that-is-at-least-32-characters-long";
@@ -20,6 +27,7 @@ const ids = {
   token: "00000000-0000-4000-8000-000000000004",
   event: "00000000-0000-4000-8000-000000000005",
   delivery: "00000000-0000-4000-8000-000000000006",
+  invitation: "00000000-0000-4000-8000-000000000007",
 };
 const expiresAt = new Date("2026-09-30T00:00:00.000Z");
 const now = new Date("2026-09-26T00:00:00.000Z");
@@ -103,9 +111,13 @@ function tokenResult(overrides?: Record<string, unknown>) {
 describe("DatabaseNotificationMessageResolver", () => {
   const quoteFindFirst = vi.fn();
   const tokenFindFirst = vi.fn();
+  const orderFindFirst = vi.fn();
+  const invitationFindFirst = vi.fn();
   const prisma = {
     quoteVersion: { findFirst: quoteFindFirst },
     publicAccessToken: { findFirst: tokenFindFirst },
+    repairOrder: { findFirst: orderFindFirst },
+    staffInvitation: { findFirst: invitationFindFirst },
   } as unknown as PrismaClient;
   const resolver = new DatabaseNotificationMessageResolver(
     prisma,
@@ -117,6 +129,8 @@ describe("DatabaseNotificationMessageResolver", () => {
     vi.clearAllMocks();
     quoteFindFirst.mockResolvedValue(quoteResult());
     tokenFindFirst.mockResolvedValue(tokenResult());
+    orderFindFirst.mockResolvedValue(null);
+    invitationFindFirst.mockResolvedValue(null);
   });
 
   it("resolves destination and content only from tenant-bound immutable records", async () => {
@@ -190,5 +204,126 @@ describe("DatabaseNotificationMessageResolver", () => {
       retryable: false,
     });
     expect(quoteFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("resolves ready-for-pickup from the immutable order snapshot", async () => {
+    orderFindFirst.mockResolvedValue({
+      id: ids.order,
+      code: "RF-READY-001",
+      customerSnapshot: { name: "Ready <Customer>", email: destination },
+      deviceSnapshot: { brand: "Dell", model: "XPS" },
+      shop: { name: "Repair <Shop>" },
+    });
+    const readyEvent = event({
+      eventType: "REPAIR_ORDER_READY",
+      aggregateType: "REPAIR_ORDER",
+      aggregateId: ids.order,
+      payload: {
+        repairOrderId: ids.order,
+        channel: "EMAIL",
+        templateKey: REPAIR_ORDER_READY_TEMPLATE_KEY,
+      },
+    });
+
+    const message = await resolver.resolve(readyEvent, delivery(), now);
+
+    expect(message.to).toBe(destination);
+    expect(message.text).toContain("RF-READY-001");
+    expect(message.html).toContain("Ready &lt;Customer&gt;");
+    expect(orderFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: ids.order, shopId: ids.shop } }),
+    );
+    expect(tokenFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("re-derives and verifies a handover TRACK token only in memory", async () => {
+    const handedOverAt = new Date("2026-09-25T03:00:00.000Z");
+    orderFindFirst.mockResolvedValue({
+      id: ids.order,
+      code: "RF-DONE-001",
+      customerSnapshot: { name: "Done Customer", email: destination },
+      deviceSnapshot: { brand: "Apple", model: "MacBook" },
+      shop: { name: "RepairFlow Demo" },
+      handover: { handedOverAt },
+      warranty: { endsAt: new Date("2027-09-25T03:00:00.000Z") },
+    });
+    const trackMetadata = {
+      tokenId: ids.token,
+      shopId: ids.shop,
+      repairOrderId: ids.order,
+      expiresAt: expiresAt.toISOString(),
+    };
+    const trackRaw = deriveTrackPublicToken(secret, trackMetadata);
+    tokenFindFirst.mockResolvedValue({
+      id: ids.token,
+      shopId: ids.shop,
+      repairOrderId: ids.order,
+      tokenHash: hashPublicToken(trackRaw),
+      expiresAt,
+      revokedAt: null,
+    });
+    const completedEvent = event({
+      eventType: "REPAIR_ORDER_COMPLETED",
+      aggregateType: "REPAIR_ORDER",
+      aggregateId: ids.order,
+      payload: {
+        repairOrderId: ids.order,
+        handedOverAt: handedOverAt.toISOString(),
+        tokenRecordId: ids.token,
+        tokenScope: "TRACK_ORDER",
+        expiresAt: expiresAt.toISOString(),
+        channel: "EMAIL",
+        templateKey: HANDOVER_COMPLETED_TEMPLATE_KEY,
+      },
+    });
+
+    const message = await resolver.resolve(completedEvent, delivery(), now);
+
+    expect(message.text).toContain(`https://app.example.test/p/${trackRaw}`);
+    expect(JSON.stringify(completedEvent)).not.toContain(trackRaw);
+    expect(JSON.stringify(delivery())).not.toContain(destination);
+  });
+
+  it("resolves a pending staff invitation and rejects stale lifecycle state", async () => {
+    const invitationMetadata = {
+      invitationId: ids.invitation,
+      expiresAt: expiresAt.toISOString(),
+    };
+    const invitationRaw = deriveStaffInvitationToken(secret, invitationMetadata);
+    const invitationRecord = {
+      id: ids.invitation,
+      email: destination,
+      role: "TECHNICIAN",
+      status: StaffInvitationStatus.PENDING,
+      tokenHash: hashPublicToken(invitationRaw),
+      expiresAt,
+      shop: { name: "RepairFlow Demo" },
+    };
+    invitationFindFirst.mockResolvedValue(invitationRecord);
+    const invitationEvent = event({
+      eventType: "STAFF_INVITATION_CREATED",
+      aggregateType: "STAFF_INVITATION",
+      aggregateId: ids.invitation,
+      payload: {
+        invitationId: ids.invitation,
+        expiresAt: expiresAt.toISOString(),
+        channel: "EMAIL",
+        templateKey: STAFF_INVITATION_TEMPLATE_KEY,
+      },
+    });
+
+    const message = await resolver.resolve(invitationEvent, delivery(), now);
+    expect(message.text).toContain(`https://app.example.test/join/${invitationRaw}`);
+    expect(JSON.stringify(invitationEvent)).not.toContain(invitationRaw);
+    expect(JSON.stringify(invitationEvent)).not.toContain(destination);
+
+    invitationFindFirst.mockResolvedValue({
+      ...invitationRecord,
+      status: StaffInvitationStatus.SUPERSEDED,
+    });
+    await expect(resolver.resolve(invitationEvent, delivery(), now)).rejects.toMatchObject({
+      code: "STAFF_INVITATION_STALE",
+      retryable: false,
+    });
   });
 });
