@@ -29,4 +29,25 @@ describe("health endpoint", () => {
     expect(response.headers["x-request-id"]).toBe("test-request-id");
     expect(response.body).toMatchObject({ service: "api", status: "ok", version: "0.1.0" });
   });
+
+  it("separates liveness from PostgreSQL readiness and replaces unsafe request ids", async () => {
+    await request(app.getHttpServer())
+      .get("/api/v1/health/live")
+      .set("X-Request-Id", "raw token secret@example.test")
+      .expect(200)
+      .expect(({ body, headers }) => {
+        expect(body).toMatchObject({ service: "api", status: "ok" });
+        expect(headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/u);
+      });
+    await request(app.getHttpServer())
+      .get("/api/v1/health/ready")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          service: "api",
+          status: "ok",
+          checks: { database: "ok" },
+        });
+      });
+  });
 });

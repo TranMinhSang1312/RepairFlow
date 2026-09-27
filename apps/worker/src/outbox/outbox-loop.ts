@@ -1,5 +1,12 @@
 import type { OutboxProcessor } from "./outbox-processor.js";
 import type { WorkerLogger } from "./outbox.types.js";
+import type { OutboxLoopObserver } from "../observability/worker-metrics.js";
+
+const noObserver: OutboxLoopObserver = {
+  pollStarted: () => undefined,
+  pollSucceeded: () => undefined,
+  pollFailed: () => undefined,
+};
 
 export class OutboxLoop {
   private timer: NodeJS.Timeout | null = null;
@@ -10,6 +17,7 @@ export class OutboxLoop {
     private readonly processor: Pick<OutboxProcessor, "runOnce">,
     private readonly logger: WorkerLogger,
     private readonly pollIntervalMs: number,
+    private readonly observer: OutboxLoopObserver = noObserver,
   ) {}
 
   start(): void {
@@ -36,10 +44,13 @@ export class OutboxLoop {
   }
 
   private async poll(): Promise<void> {
+    this.observer.pollStarted();
     try {
       const summary = await this.processor.runOnce();
+      this.observer.pollSucceeded(summary);
       this.logger.debug({ ...summary }, "Outbox poll completed");
     } catch {
+      this.observer.pollFailed();
       this.logger.error({ errorCode: "OUTBOX_POLL_FAILED" }, "Outbox poll failed");
     }
   }

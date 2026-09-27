@@ -103,6 +103,14 @@ flowchart LR
 
 Redis/BullMQ chỉ nên thêm khi lượng job lớn hoặc cần retry/throughput cao. Microservice chưa có lợi ở giai đoạn đầu.
 
+### Operational probes and telemetry
+
+- API liveness không gọi dependency; API readiness kiểm tra PostgreSQL và trả `503` với component status allowlist khi lỗi.
+- Worker có operations server nội bộ riêng cho liveness, readiness và Prometheus metrics. Cổng này chỉ được expose trong private deployment network.
+- Metrics không dùng label shop, user, customer, recipient, event ID hoặc error message để tránh dữ liệu nhạy cảm và cardinality cao.
+- Error tracking nhận structured safe event. Exception object, stack, request body/query/header, destination, raw token và provider body không được chuyển vào telemetry.
+- Alert provider nằm ngoài process. Runtime chỉ phát safe alert event theo threshold; hệ thống triển khai route log/metrics tới công cụ vận hành.
+
 ## 4. Các module backend
 
 | Module | Trách nhiệm | Không được làm thay module khác |

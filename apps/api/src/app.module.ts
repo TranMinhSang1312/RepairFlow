@@ -7,7 +7,8 @@ import { stdSerializers } from "pino";
 
 import { PrismaModule } from "./infra/database/prisma.module.js";
 import { HealthController } from "./health/health.controller.js";
-import { HTTP_LOG_REDACTION, redactPublicTokenRequest } from "./logging.js";
+import { HealthService } from "./health/health.service.js";
+import { HTTP_LOG_REDACTION, acceptedRequestId, redactPublicTokenRequest } from "./logging.js";
 import { AuthorizationModule } from "./common/authorization/authorization.module.js";
 import { CustomersModule } from "./modules/customers/customers.module.js";
 import { DevicesModule } from "./modules/devices/devices.module.js";
@@ -43,9 +44,7 @@ const environment = parseApiEnvironment(process.env);
       pinoHttp: {
         level: environment.LOG_LEVEL,
         genReqId(request, response) {
-          const supplied = request.headers["x-request-id"];
-          const requestId =
-            typeof supplied === "string" && supplied.length > 0 ? supplied : randomUUID();
+          const requestId = acceptedRequestId(request.headers["x-request-id"]) ?? randomUUID();
           response.setHeader("X-Request-Id", requestId);
           return requestId;
         },
@@ -59,5 +58,6 @@ const environment = parseApiEnvironment(process.env);
     }),
   ],
   controllers: [HealthController],
+  providers: [HealthService],
 })
 export class AppModule {}

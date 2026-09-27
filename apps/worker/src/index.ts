@@ -11,6 +11,9 @@ import { OutboxLoop } from "./outbox/outbox-loop.js";
 import { OutboxProcessor } from "./outbox/outbox-processor.js";
 import { OutboxRepository } from "./outbox/outbox-repository.js";
 import { ResendEmailNotificationProvider } from "./outbox/resend-email.provider.js";
+import { WorkerMetrics } from "./observability/worker-metrics.js";
+import { WorkerOperationsServer } from "./observability/worker-operations-server.js";
+import { WorkerReadiness } from "./observability/worker-readiness.js";
 import { workerHealth } from "./worker";
 
 loadWorkspaceEnvironment();
@@ -60,19 +63,56 @@ const processor = new OutboxProcessor(repository, handler, logger, workerId, {
   retryBaseMs: environment.WORKER_RETRY_BASE_MS,
   retryMaxMs: environment.WORKER_RETRY_MAX_MS,
 });
-const loop = new OutboxLoop(processor, logger, environment.WORKER_POLL_INTERVAL_MS);
+const metrics = new WorkerMetrics(
+  logger,
+  environment.WORKER_ALERT_FAILURE_THRESHOLD,
+  environment.WORKER_ALERT_DEAD_LETTER_THRESHOLD,
+);
+const loop = new OutboxLoop(processor, logger, environment.WORKER_POLL_INTERVAL_MS, metrics);
+const readiness = new WorkerReadiness(
+  async () => {
+    await prisma.$queryRaw`SELECT 1`;
+  },
+  metrics,
+  environment.WORKER_READINESS_STALE_MS,
+);
+const operationsServer = new WorkerOperationsServer(
+  environment.WORKER_HEALTH_HOST,
+  environment.WORKER_HEALTH_PORT,
+  readiness,
+  metrics,
+);
 let shuttingDown = false;
 
-logger.info({ ...workerHealth(), workerId }, "RepairFlow worker started");
-loop.start();
+async function bootstrap(): Promise<void> {
+  await operationsServer.start();
+  logger.info(
+    {
+      ...workerHealth(),
+      workerId,
+      healthPort: environment.WORKER_HEALTH_PORT,
+    },
+    "RepairFlow worker started",
+  );
+  loop.start();
+}
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   await loop.stop();
+  await operationsServer.stop();
   await prisma.$disconnect();
   logger.info({ signal, workerId }, "RepairFlow worker stopped");
 }
 
 process.once("SIGINT", (signal) => void shutdown(signal));
 process.once("SIGTERM", (signal) => void shutdown(signal));
+void bootstrap().catch(async () => {
+  logger.fatal(
+    { event: "worker.bootstrap.error", service: "worker", errorCode: "WORKER_BOOTSTRAP_FAILED" },
+    "RepairFlow worker failed to start",
+  );
+  await prisma.$disconnect();
+  process.exitCode = 1;
+});

@@ -4,12 +4,12 @@ import {
   type ExceptionFilter,
   HttpException,
   HttpStatus,
-  Logger,
 } from "@nestjs/common";
 import type { ErrorDetail, ErrorEnvelope, FoundationErrorCode } from "@repairflow/contracts";
 import type { Request, Response } from "express";
 
 import { ApiException } from "./api-exception.js";
+import { StructuredLogErrorTracker, type ErrorTracker } from "../observability/error-tracker.js";
 
 type RequestWithId = Request & { id?: string };
 
@@ -21,7 +21,7 @@ interface NestValidationBody {
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(ApiExceptionFilter.name);
+  constructor(private readonly errorTracker: ErrorTracker = new StructuredLogErrorTracker()) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const context = host.switchToHttp();
@@ -34,7 +34,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const code = this.codeForResponse(body, status);
 
     if (status >= 500) {
-      this.logger.error({ requestId, exception }, "Unhandled API exception");
+      this.errorTracker.capture({
+        event: "api.request.error",
+        service: "api",
+        requestId,
+        method: this.safeMethod(request.method),
+        route: this.safeRoute(request),
+        statusCode: status,
+        errorCode: code,
+      });
     }
 
     if (exception instanceof ApiException) {
@@ -53,6 +61,17 @@ export class ApiExceptionFilter implements ExceptionFilter {
     };
 
     response.status(status).json(envelope);
+  }
+
+  private safeMethod(value: string | undefined): string {
+    return value && /^[A-Z]{3,10}$/u.test(value) ? value : "UNKNOWN";
+  }
+
+  private safeRoute(request: Request): string {
+    const value = (request.route as { path?: unknown } | undefined)?.path;
+    return typeof value === "string" && /^\/[A-Za-z0-9_/:*{}.-]{0,199}$/u.test(value)
+      ? value
+      : "unmatched";
   }
 
   private codeForStatus(status: number): FoundationErrorCode {
