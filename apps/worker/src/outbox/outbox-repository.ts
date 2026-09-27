@@ -43,7 +43,8 @@ export class OutboxRepository {
           "status" = 'DEAD_LETTER'::"OutboxStatus",
           "lockedAt" = NULL,
           "lockedBy" = NULL,
-          "lastError" = 'LEASE_EXPIRED'
+          "lastError" = 'LEASE_EXPIRED',
+          "lockVersion" = event."lockVersion" + 1
         WHERE event."status" = 'PROCESSING'::"OutboxStatus"
           AND event."eventType" IN (${Prisma.join(options.eventTypes)})
           AND event."lockedAt" <= ${leaseExpiredAt}
@@ -105,6 +106,7 @@ export class OutboxRepository {
           "attempts" = event."attempts" + 1,
           "lockedAt" = ${now},
           "lockedBy" = ${workerId},
+          "lockVersion" = event."lockVersion" + 1,
           "lastError" = CASE
             WHEN event."status" = 'PROCESSING'::"OutboxStatus" THEN 'LEASE_EXPIRED'
             ELSE event."lastError"
@@ -201,6 +203,7 @@ export class OutboxRepository {
         lockedBy: null,
         lastError: null,
         completedAt,
+        lockVersion: { increment: 1 },
       },
     });
     if (result.count !== 1) throw new Error("OUTBOX_CLAIM_LOST");
@@ -229,6 +232,7 @@ export class OutboxRepository {
         lockedAt: null,
         lockedBy: null,
         lastError: code,
+        lockVersion: { increment: 1 },
       },
     });
     if (result.count !== 1) throw new Error("OUTBOX_CLAIM_LOST");

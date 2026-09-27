@@ -671,4 +671,44 @@ describe("BrowserIntakeApi", () => {
       "warranty-key",
     );
   });
+
+  it("maps RF-053 notification filters, tenant headers and retry concurrency fields", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const eventId = "77777777-7777-4777-8777-777777777777";
+    const page = { data: [], meta: { nextCursor: null } };
+    const retried = {
+      id: eventId,
+      status: "PENDING",
+      attempts: 0,
+      lockVersion: 4,
+      deliveries: [],
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(jsonResponse(page))
+      .mockResolvedValueOnce(jsonResponse({ data: retried }));
+    const client = new BrowserIntakeApi("/api/v1", fetcher);
+    await client.restoreSession();
+    await client.listNotificationOperations(
+      shopId,
+      { status: "DEAD_LETTER", eventType: "QUOTE_SENT", channel: "EMAIL" },
+      "cursor-value",
+    );
+    await client.retryNotificationOperation(shopId, eventId, 3, "notification-retry-key");
+
+    expect(String(fetcher.mock.calls[1]![0])).toBe(
+      "/api/v1/operations/notifications?status=DEAD_LETTER&eventType=QUOTE_SENT&channel=EMAIL&cursor=cursor-value",
+    );
+    expect(new Headers(fetcher.mock.calls[1]![1]?.headers).get("X-Shop-Id")).toBe(shopId);
+    expect(String(fetcher.mock.calls[2]![0])).toBe(
+      `/api/v1/operations/notifications/${eventId}/retry`,
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[2]![1]?.body))).toEqual({
+      expectedLockVersion: 3,
+    });
+    expect(new Headers(fetcher.mock.calls[2]![1]?.headers).get("Idempotency-Key")).toBe(
+      "notification-retry-key",
+    );
+  });
 });

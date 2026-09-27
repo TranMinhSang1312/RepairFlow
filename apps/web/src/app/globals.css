@@ -1928,8 +1928,10 @@ body > main.auth-shell {
     gap: 8px 14px;
   }
   .global-staff-header nav {
+    flex-wrap: wrap;
     grid-column: 1 / -1;
     grid-row: 2;
+    min-width: 0;
   }
   .staff-account {
     justify-self: end;
@@ -1992,6 +1994,176 @@ body > main.auth-shell {
   .workspace-shop-selector select {
     min-width: 0;
     width: 100%;
+  }
+}
+
+.notification-operations {
+  display: grid;
+  gap: 18px;
+}
+
+.notification-filter-card {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+}
+
+.notification-filter-card label,
+.notification-operations .settings-heading label {
+  display: grid;
+  font-weight: 700;
+  gap: 7px;
+}
+
+.notification-filter-card input,
+.notification-filter-card select,
+.notification-operations .settings-heading select {
+  min-width: 0;
+  width: 100%;
+}
+
+.notification-job-list {
+  display: grid;
+  gap: 14px;
+}
+
+.notification-job-card {
+  display: grid;
+  gap: 16px;
+}
+
+.notification-job-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.notification-job-heading h2 {
+  margin: 8px 0 3px;
+}
+
+.notification-job-heading p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-metadata {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.notification-metadata > div,
+.notification-delivery-list > div {
+  background: var(--surface-muted, #f4f7f5);
+  border-radius: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.notification-metadata dt {
+  color: var(--muted, #5e6b64);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.notification-metadata dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-job-card details summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.notification-delivery-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.notification-delivery-list > div {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 90px 110px 70px minmax(0, 1fr);
+}
+
+.notification-delivery-list code {
+  overflow-wrap: anywhere;
+}
+
+.notification-load-more {
+  justify-self: center;
+}
+
+.notification-dialog-backdrop {
+  align-items: center;
+  background: rgb(8 25 17 / 55%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 40;
+}
+
+.notification-dialog {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgb(4 24 14 / 25%);
+  max-width: 520px;
+  padding: 24px;
+  width: 100%;
+}
+
+.notification-dialog h2 {
+  margin-top: 0;
+}
+
+.notification-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+@media (max-width: 720px) {
+  .notification-filter-card,
+  .notification-metadata {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .notification-delivery-list > div {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .notification-filter-card,
+  .notification-metadata,
+  .notification-delivery-list > div {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-filter-card .button,
+  .notification-job-heading .button,
+  .notification-dialog-actions .button {
+    width: 100%;
+  }
+
+  .notification-job-heading,
+  .notification-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notification-dialog-backdrop {
+    padding: 10px;
   }
 }
 

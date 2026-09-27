@@ -25,6 +25,8 @@ tags:
     description: Diagnosis, work, quality control, handover, and warranty.
   - name: Public portal
     description: Customer-safe tracking and quote decisions through scoped tokens.
+  - name: Operations
+    description: Owner-only, tenant-scoped operational views and commands.
   - name: AI
     description: Optional asynchronous AI assistance.
 
@@ -805,6 +807,53 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
 
+  /api/v1/operations/notifications:
+    get:
+      tags: [Operations]
+      summary: List failed notification jobs using a safe operational projection
+      operationId: listNotificationOperations
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {name: status, in: query, schema: {type: string, enum: [FAILED, DEAD_LETTER]}}
+        - {name: eventType, in: query, schema: {type: string, pattern: '^[A-Z][A-Z0-9_]{0,99}$'}}
+        - {name: channel, in: query, schema: {type: string, enum: [EMAIL, ZALO, SMS]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 30}}
+      responses:
+        '200': {description: Safe tenant notification job page, content: {application/json: {schema: {$ref: '#/components/schemas/NotificationOperationPage'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/operations/notifications/{outboxEventId}:
+    get:
+      tags: [Operations]
+      summary: Read safe metadata for one failed notification job
+      operationId: getNotificationOperation
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {name: outboxEventId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      responses:
+        '200': {description: Safe notification job metadata, content: {application/json: {schema: {$ref: '#/components/schemas/NotificationOperationResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/operations/notifications/{outboxEventId}/retry:
+    post:
+      tags: [Operations]
+      summary: Atomically schedule a failed notification job for worker retry
+      operationId: retryNotificationOperation
+      parameters:
+        - {$ref: '#/components/parameters/ShopHeader'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: outboxEventId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExpectedLockVersion'}}}}
+      responses:
+        '200': {description: Job scheduled for asynchronous worker processing, content: {application/json: {schema: {$ref: '#/components/schemas/NotificationOperationResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
   /public/v1/orders/{token}:
     get:
       tags: [Public portal]
@@ -1057,6 +1106,51 @@ components:
       additionalProperties: false
       required: [expectedLockVersion]
       properties: {expectedLockVersion: {type: integer, minimum: 0}}
+    NotificationDeliveryOperation:
+      type: object
+      additionalProperties: false
+      required: [id, channel, status, attempts, lastErrorCode, sentAt, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        channel: {type: string, enum: [EMAIL, ZALO, SMS]}
+        status: {type: string, enum: [PENDING, SENT, FAILED]}
+        attempts: {type: integer, minimum: 0}
+        lastErrorCode: {type: [string, 'null']}
+        sentAt: {type: [string, 'null'], format: date-time}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    NotificationOperation:
+      type: object
+      additionalProperties: false
+      required: [id, eventType, aggregateType, aggregateId, status, attempts, lockVersion, availableAt, lastErrorCode, completedAt, createdAt, deliveries]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        eventType: {type: string}
+        aggregateType: {type: string}
+        aggregateId: {$ref: '#/components/schemas/Uuid'}
+        status: {type: string, enum: [PENDING, FAILED, DEAD_LETTER]}
+        attempts: {type: integer, minimum: 0}
+        lockVersion: {type: integer, minimum: 0}
+        availableAt: {$ref: '#/components/schemas/IsoDateTime'}
+        lastErrorCode: {type: [string, 'null']}
+        completedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+        deliveries: {type: array, items: {$ref: '#/components/schemas/NotificationDeliveryOperation'}}
+    NotificationOperationResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/NotificationOperation'}}
+    NotificationOperationPage:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/NotificationOperation'}}
+        meta:
+          type: object
+          additionalProperties: false
+          required: [nextCursor]
+          properties: {nextCursor: {type: [string, 'null']}}
     CreateStaffInvitationRequest:
       type: object
       additionalProperties: false

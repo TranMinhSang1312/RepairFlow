@@ -230,5 +230,6 @@ Owner and receptionist can open the staff list. Only the owner sees invitation a
 - Deactivation confirmation explains that access ends immediately while repair history remains. The last active owner cannot be demoted or deactivated.
 - Loading, empty, retry, conflict, expired-link, read-only, and 360 px card states are explicit.
 - QC template management.
+- Owner notification operations: filter failed/dead-letter jobs, inspect safe metadata, and request an asynchronous retry. The screen never displays payloads, destinations, raw tokens, provider response data, or secrets.
 
 Changing templates or default terms never rewrites historical snapshots.
