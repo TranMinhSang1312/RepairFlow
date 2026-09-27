@@ -52,6 +52,7 @@ Legend: `A` allowed, `O` allowed only for an assigned order, `—` denied, `T` a
 | Create warranty follow-up | A | A | — | — |
 | View public progress | — | — | — | T |
 | View audit logs | A | — | — | — |
+| View/retry failed notification jobs | A | — | — | — |
 | View business reports | A | — | — | — |
 | Run AI assistance | A | A | O | — |
 | Accept AI draft into form | A | A | O | — |

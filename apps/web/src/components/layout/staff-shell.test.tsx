@@ -88,6 +88,9 @@ describe("ProtectedStaffLayout", () => {
     expect(screen.getByRole("link", { name: "Nhân viên" }).getAttribute("href")).toBe(
       "/settings/staff?shopId=shop-one",
     );
+    expect(screen.getByRole("link", { name: "Thông báo" }).getAttribute("href")).toBe(
+      "/settings/notifications?shopId=shop-one",
+    );
 
     authState = {
       ...authState,
@@ -109,6 +112,7 @@ describe("ProtectedStaffLayout", () => {
       </ProtectedStaffLayout>,
     );
     expect(screen.queryByRole("link", { name: "Mẫu QC" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Thông báo" })).toBeNull();
     expect(screen.getByRole("link", { name: "Nhân viên" })).toBeTruthy();
 
     authState = {

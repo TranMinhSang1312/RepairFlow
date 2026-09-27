@@ -910,6 +910,7 @@ model OutboxEvent {
   payload       Json
   status        OutboxStatus @default(PENDING)
   attempts      Int          @default(0)
+  lockVersion   Int          @default(0)
   availableAt   DateTime     @default(now()) @db.Timestamptz(3)
   lockedAt      DateTime?    @db.Timestamptz(3)
   lockedBy      String?
@@ -922,6 +923,7 @@ model OutboxEvent {
 
   @@index([status, availableAt])
   @@index([shopId, aggregateType, aggregateId])
+  @@index([shopId, status, createdAt(sort: Desc), id(sort: Desc)])
   @@map("outbox_events")
 }
 

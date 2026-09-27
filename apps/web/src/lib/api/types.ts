@@ -84,6 +84,46 @@ export interface StaffMembershipFilters {
   cursor?: string;
 }
 
+export type NotificationChannel = "EMAIL" | "ZALO" | "SMS";
+export type NotificationOperationStatus = "PENDING" | "FAILED" | "DEAD_LETTER";
+export type NotificationDeliveryStatus = "PENDING" | "SENT" | "FAILED";
+
+export interface NotificationDeliveryOperation {
+  id: string;
+  channel: NotificationChannel;
+  status: NotificationDeliveryStatus;
+  attempts: number;
+  lastErrorCode: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationOperation {
+  id: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  status: NotificationOperationStatus;
+  attempts: number;
+  lockVersion: number;
+  availableAt: string;
+  lastErrorCode: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  deliveries: NotificationDeliveryOperation[];
+}
+
+export interface NotificationOperationFilters {
+  status?: "FAILED" | "DEAD_LETTER";
+  eventType?: string;
+  channel?: NotificationChannel;
+}
+
+export interface NotificationOperationPage {
+  data: NotificationOperation[];
+  meta: { nextCursor: string | null };
+}
+
 export interface Customer {
   id: string;
   name: string;

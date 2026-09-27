@@ -163,6 +163,9 @@ describe("PostgreSQL outbox worker", () => {
     expect(claimed).toHaveLength(1);
     expect(claimed[0]).toMatchObject({ attempts: 1, notifications: [{ channel: "EMAIL" }] });
     expect(["worker-a", "worker-b"]).toContain(claimed[0]!.lockedBy);
+    expect(
+      await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: claimed[0]!.id } }),
+    ).toMatchObject({ status: OutboxStatus.PROCESSING, lockVersion: 1 });
   });
 
   it("retries with bounded backoff, uses a stable provider key, and completes once", async () => {
@@ -181,13 +184,13 @@ describe("PostgreSQL outbox worker", () => {
 
     expect(await processor.runOnce()).toMatchObject({ retried: 1 });
     let stored = await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: event.id } });
-    expect(stored).toMatchObject({ status: OutboxStatus.FAILED, attempts: 1 });
+    expect(stored).toMatchObject({ status: OutboxStatus.FAILED, attempts: 1, lockVersion: 2 });
     expect(stored.availableAt.toISOString()).toBe("2026-09-26T02:00:01.000Z");
 
     now = stored.availableAt;
     expect(await processor.runOnce()).toMatchObject({ retried: 1 });
     stored = await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: event.id } });
-    expect(stored).toMatchObject({ status: OutboxStatus.FAILED, attempts: 2 });
+    expect(stored).toMatchObject({ status: OutboxStatus.FAILED, attempts: 2, lockVersion: 4 });
     expect(stored.availableAt.toISOString()).toBe("2026-09-26T02:00:03.000Z");
 
     now = stored.availableAt;
@@ -196,7 +199,11 @@ describe("PostgreSQL outbox worker", () => {
     const delivery = await firstClient.notificationDelivery.findFirstOrThrow({
       where: { outboxEventId: event.id },
     });
-    expect(stored).toMatchObject({ status: OutboxStatus.COMPLETED, attempts: 3 });
+    expect(stored).toMatchObject({
+      status: OutboxStatus.COMPLETED,
+      attempts: 3,
+      lockVersion: 6,
+    });
     expect(delivery).toMatchObject({ status: NotificationStatus.SENT, attempts: 3 });
     expect(new Set(provider.messages.map((message) => message.idempotencyKey)).size).toBe(1);
     expect(JSON.stringify(logger.entries)).not.toContain("sensitive-payload-must-not-be-logged");
@@ -227,6 +234,7 @@ describe("PostgreSQL outbox worker", () => {
       lockedAt: null,
       lockedBy: null,
       lastError: "EMAIL_TEMPORARY_FAILURE",
+      lockVersion: 4,
     });
   });
 
@@ -247,8 +255,32 @@ describe("PostgreSQL outbox worker", () => {
       lockedBy: "replacement-worker",
     });
     expect(
+      await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: stale.event.id } }),
+    ).toMatchObject({ status: OutboxStatus.PROCESSING, lockVersion: 1 });
+    expect(
       await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: domainOnly.event.id } }),
     ).toMatchObject({ status: OutboxStatus.PENDING, attempts: 0 });
+  });
+
+  it("increments the optimistic version when an exhausted lease becomes dead letter", async () => {
+    const now = new Date("2026-09-26T04:15:00.000Z");
+    const exhausted = await createOutboxFixture({
+      status: OutboxStatus.PROCESSING,
+      attempts: options.maxAttempts,
+      lockedAt: new Date(now.getTime() - options.leaseMs - 1),
+      lockedBy: "crashed-worker",
+    });
+
+    expect(await firstRepository.claimBatch("replacement-worker", now, options)).toHaveLength(0);
+    expect(
+      await firstClient.outboxEvent.findUniqueOrThrow({ where: { id: exhausted.event.id } }),
+    ).toMatchObject({
+      status: OutboxStatus.DEAD_LETTER,
+      lockVersion: 1,
+      lockedAt: null,
+      lockedBy: null,
+      lastError: "LEASE_EXPIRED",
+    });
   });
 
   it("leaves a delivery for an unconfigured channel pending", async () => {

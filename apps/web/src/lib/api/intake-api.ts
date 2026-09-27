@@ -47,6 +47,9 @@ import type {
   PublicStaffInvitation,
   MembershipRole,
   MembershipStatus,
+  NotificationOperation,
+  NotificationOperationFilters,
+  NotificationOperationPage,
 } from "./types";
 
 interface DataResponse<T> {
@@ -247,6 +250,21 @@ export interface StaffMembershipApi {
   acceptExistingStaffInvitation(token: string): Promise<CurrentUser>;
 }
 
+export interface NotificationOperationsApi {
+  listNotificationOperations(
+    shopId: string,
+    filters?: NotificationOperationFilters,
+    cursor?: string,
+  ): Promise<NotificationOperationPage>;
+  getNotificationOperation(shopId: string, eventId: string): Promise<NotificationOperation>;
+  retryNotificationOperation(
+    shopId: string,
+    eventId: string,
+    expectedLockVersion: number,
+    idempotencyKey: string,
+  ): Promise<NotificationOperation>;
+}
+
 export interface SessionCallbacks {
   onSession?(auth: AuthData): void;
   onSessionExpired?(): void;
@@ -258,7 +276,9 @@ type RequestOptions = RequestInit & {
   retryAuth?: boolean;
 };
 
-export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi, StaffMembershipApi {
+export class BrowserIntakeApi
+  implements IntakeApi, RepairOrderWorkspaceApi, StaffMembershipApi, NotificationOperationsApi
+{
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
 
@@ -445,6 +465,48 @@ export class BrowserIntakeApi implements IntakeApi, RepairOrderWorkspaceApi, Sta
       method: "POST",
       headers: { "X-RepairFlow-Invitation-Token": token },
     });
+    return response.data;
+  }
+
+  async listNotificationOperations(
+    shopId: string,
+    filters: NotificationOperationFilters = {},
+    cursor?: string,
+  ): Promise<NotificationOperationPage> {
+    const params = new URLSearchParams();
+    if (filters.status) params.set("status", filters.status);
+    if (filters.eventType) params.set("eventType", filters.eventType);
+    if (filters.channel) params.set("channel", filters.channel);
+    if (cursor) params.set("cursor", cursor);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.request<NotificationOperationPage>(`/operations/notifications${suffix}`, {
+      shopId,
+    });
+  }
+
+  async getNotificationOperation(shopId: string, eventId: string): Promise<NotificationOperation> {
+    const response = await this.request<DataResponse<NotificationOperation>>(
+      `/operations/notifications/${encodeURIComponent(eventId)}`,
+      { shopId },
+    );
+    return response.data;
+  }
+
+  async retryNotificationOperation(
+    shopId: string,
+    eventId: string,
+    expectedLockVersion: number,
+    idempotencyKey: string,
+  ): Promise<NotificationOperation> {
+    const response = await this.request<DataResponse<NotificationOperation>>(
+      `/operations/notifications/${encodeURIComponent(eventId)}/retry`,
+      {
+        method: "POST",
+        shopId,
+        idempotencyKey,
+        body: JSON.stringify({ expectedLockVersion }),
+      },
+    );
     return response.data;
   }
 

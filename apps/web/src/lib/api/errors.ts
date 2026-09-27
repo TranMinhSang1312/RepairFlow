@@ -9,6 +9,7 @@ const SAFE_MESSAGES: Readonly<Record<string, string>> = {
   MEMBERSHIP_INACTIVE: "Quyền truy cập cửa hàng này không còn hoạt động.",
   IDEMPOTENCY_KEY_REUSED: "Yêu cầu này đã được dùng với dữ liệu khác. Hãy tải lại trang.",
   CONCURRENT_UPDATE: "Phiếu vừa được người khác cập nhật. Hãy tải lại dữ liệu mới nhất.",
+  NOTIFICATION_RETRY_NOT_ALLOWED: "Job không còn ở trạng thái cho phép thử lại.",
   REPAIR_ORDER_GUARD_FAILED: "Phiếu chưa đáp ứng điều kiện để thực hiện thao tác này.",
   TECHNICIAN_NOT_ASSIGNED: "Phiếu cần được phân công kỹ thuật viên trước.",
   INTAKE_PHOTOS_REQUIRED: "Cửa hàng yêu cầu thêm ảnh tiếp nhận.",

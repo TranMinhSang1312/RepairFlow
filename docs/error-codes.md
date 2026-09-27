@@ -105,3 +105,4 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 503 | `AI_PROVIDER_UNAVAILABLE` | Provider is unavailable; manual flow remains usable. |
 | 502 | `AI_OUTPUT_INVALID` | Provider output failed schema validation. |
 | 409 | `AI_DRAFT_ALREADY_APPLIED` | The same draft cannot be applied twice. |
+| 409 | `NOTIFICATION_RETRY_NOT_ALLOWED` | Notification job is no longer failed or dead-lettered and cannot be manually retried. |
