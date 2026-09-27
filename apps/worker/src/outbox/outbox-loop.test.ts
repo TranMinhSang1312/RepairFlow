@@ -30,7 +30,12 @@ describe("OutboxLoop", () => {
       .fn<() => Promise<OutboxRunSummary>>()
       .mockReturnValueOnce(firstRun)
       .mockResolvedValue(emptySummary);
-    const loop = new OutboxLoop({ runOnce }, logger, 1000);
+    const observer = {
+      pollStarted: vi.fn(),
+      pollSucceeded: vi.fn(),
+      pollFailed: vi.fn(),
+    };
+    const loop = new OutboxLoop({ runOnce }, logger, 1000, observer);
 
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -47,5 +52,30 @@ describe("OutboxLoop", () => {
     await loop.stop();
     await vi.advanceTimersByTimeAsync(5000);
     expect(runOnce).toHaveBeenCalledTimes(2);
+    expect(observer.pollStarted).toHaveBeenCalledTimes(2);
+    expect(observer.pollSucceeded).toHaveBeenCalledTimes(2);
+    expect(observer.pollFailed).not.toHaveBeenCalled();
+  });
+
+  it("records a failed poll without leaking the thrown error", async () => {
+    vi.useFakeTimers();
+    const observer = {
+      pollStarted: vi.fn(),
+      pollSucceeded: vi.fn(),
+      pollFailed: vi.fn(),
+    };
+    const error = vi.fn();
+    const loop = new OutboxLoop(
+      { runOnce: vi.fn().mockRejectedValue(new Error("provider-body-secret")) },
+      { ...logger, error },
+      1000,
+      observer,
+    );
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await loop.stop();
+    expect(observer.pollFailed).toHaveBeenCalledOnce();
+    expect(observer.pollSucceeded).not.toHaveBeenCalled();
+    expect(JSON.stringify(error.mock.calls)).not.toContain("provider-body-secret");
   });
 });

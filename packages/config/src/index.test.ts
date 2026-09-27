@@ -25,6 +25,11 @@ describe("environment parsing", () => {
       WORKER_MAX_ATTEMPTS: 5,
       WORKER_RETRY_BASE_MS: 1000,
       WORKER_RETRY_MAX_MS: 60000,
+      WORKER_HEALTH_HOST: "0.0.0.0",
+      WORKER_HEALTH_PORT: 3002,
+      WORKER_READINESS_STALE_MS: 30000,
+      WORKER_ALERT_FAILURE_THRESHOLD: 3,
+      WORKER_ALERT_DEAD_LETTER_THRESHOLD: 1,
       WORKER_NOTIFICATION_PROVIDER: "fake",
     });
   });
@@ -35,6 +40,14 @@ describe("environment parsing", () => {
         DATABASE_URL: "postgresql://localhost/repairflow",
         ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
         WORKER_MAX_ATTEMPTS: "0",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseWorkerEnvironment({
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+        WORKER_POLL_INTERVAL_MS: "5000",
+        WORKER_READINESS_STALE_MS: "9000",
       }),
     ).toThrow();
   });

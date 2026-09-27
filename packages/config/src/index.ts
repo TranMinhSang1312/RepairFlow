@@ -69,6 +69,11 @@ const workerEnvironmentSchema = z
     WORKER_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(25).default(5),
     WORKER_RETRY_BASE_MS: z.coerce.number().int().min(250).max(3600000).default(1000),
     WORKER_RETRY_MAX_MS: z.coerce.number().int().min(250).max(86400000).default(60000),
+    WORKER_HEALTH_HOST: z.string().default("0.0.0.0"),
+    WORKER_HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(3002),
+    WORKER_READINESS_STALE_MS: z.coerce.number().int().min(1000).max(900000).default(30000),
+    WORKER_ALERT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(100).default(3),
+    WORKER_ALERT_DEAD_LETTER_THRESHOLD: z.coerce.number().int().min(1).max(100).default(1),
     WORKER_NOTIFICATION_PROVIDER: z.enum(["fake", "email"]).default("fake"),
     ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
     PUBLIC_TOKEN_SECRET: z.string().min(32).optional(),
@@ -80,6 +85,13 @@ const workerEnvironmentSchema = z
     RESEND_TIMEOUT_MS: z.coerce.number().int().min(500).max(60000).default(10000),
   })
   .superRefine((environment, context) => {
+    if (environment.WORKER_READINESS_STALE_MS < environment.WORKER_POLL_INTERVAL_MS * 2) {
+      context.addIssue({
+        code: "custom",
+        path: ["WORKER_READINESS_STALE_MS"],
+        message: "Worker readiness stale window must cover at least two poll intervals.",
+      });
+    }
     if (!environment.PUBLIC_TOKEN_SECRET && !environment.ACCESS_TOKEN_SECRET) {
       context.addIssue({
         code: "custom",

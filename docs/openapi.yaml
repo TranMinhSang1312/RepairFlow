@@ -27,10 +27,40 @@ tags:
     description: Customer-safe tracking and quote decisions through scoped tokens.
   - name: Operations
     description: Owner-only, tenant-scoped operational views and commands.
+  - name: Health
+    description: Public process liveness and readiness probes with allowlisted dependency status.
   - name: AI
     description: Optional asynchronous AI assistance.
 
 paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Backward-compatible API liveness probe
+      operationId: getApiHealth
+      security: []
+      responses:
+        '200': {description: API process is live, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+
+  /api/v1/health/live:
+    get:
+      tags: [Health]
+      summary: API process liveness without dependency checks
+      operationId: getApiLiveness
+      security: []
+      responses:
+        '200': {description: API process is live, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+
+  /api/v1/health/ready:
+    get:
+      tags: [Health]
+      summary: API readiness including PostgreSQL
+      operationId: getApiReadiness
+      security: []
+      responses:
+        '200': {description: API is ready, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+        '503': {description: API dependency is unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+
   /api/v1/auth/register-owner:
     post:
       tags: [Auth]
@@ -1047,6 +1077,18 @@ components:
       content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
 
   schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [service, status, version, timestamp]
+      properties:
+        service: {type: string, enum: [api, web, worker]}
+        status: {type: string, enum: [ok, unavailable]}
+        version: {type: string}
+        timestamp: {$ref: '#/components/schemas/IsoDateTime'}
+        checks:
+          type: object
+          additionalProperties: {type: string, enum: [ok, unavailable, stale]}
     Uuid:
       type: string
       format: uuid

@@ -28,7 +28,8 @@ export interface ErrorEnvelope {
 
 export interface HealthResponse {
   service: "api" | "web" | "worker";
-  status: "ok";
+  status: "ok" | "unavailable";
   version: string;
   timestamp: string;
+  checks?: Record<string, "ok" | "unavailable" | "stale">;
 }
