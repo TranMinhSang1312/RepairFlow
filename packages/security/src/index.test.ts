@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildPublicTokenUrl,
+  buildStaffInvitationUrl,
   deriveNotificationDestinationHash,
   deriveQuotePublicToken,
+  deriveStaffInvitationToken,
   deriveTrackPublicToken,
   hashPublicToken,
   normalizeNotificationDestination,
@@ -26,14 +28,25 @@ describe("shared security derivation", () => {
     };
     const quote = deriveQuotePublicToken(secret, quoteMetadata);
     const track = deriveTrackPublicToken(secret, common);
+    const invitationMetadata = {
+      invitationId: "00000000-0000-4000-8000-000000000005",
+      expiresAt: common.expiresAt,
+    };
+    const invitation = deriveStaffInvitationToken(secret, invitationMetadata);
 
     expect(quote).toBe(deriveQuotePublicToken(secret, quoteMetadata));
     expect(quote).toBe("E3bVd7p0-v6XxO0HkI8nXBHf46WT5NUFn1U0FPAZEsk");
     expect(track).toBe("64jgC3_jyLF3hY8DW2iVLss2so92LXobG9i6mjlK1uo");
     expect(track).not.toBe(quote);
+    expect(invitation).toBe(deriveStaffInvitationToken(secret, invitationMetadata));
+    expect(invitation).not.toBe(quote);
+    expect(invitation).not.toBe(track);
     expect(hashPublicToken(quote)).toMatch(/^[a-f\d]{64}$/u);
     expect(buildPublicTokenUrl("https://app.example.test/base", quote)).toBe(
       `https://app.example.test/p/${quote}`,
+    );
+    expect(buildStaffInvitationUrl("https://app.example.test/base", invitation)).toBe(
+      `https://app.example.test/join/${invitation}`,
     );
   });
 

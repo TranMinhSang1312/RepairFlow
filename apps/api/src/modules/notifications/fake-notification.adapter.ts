@@ -53,4 +53,32 @@ export class FakeNotificationAdapter {
       ),
     };
   }
+
+  optionalEmail(value: unknown): NotificationPlan | null {
+    const destination = normalizeNotificationDestination("EMAIL", value);
+    return destination ? this.emailPlan(destination) : null;
+  }
+
+  requiredEmail(value: unknown): NotificationPlan {
+    const plan = this.optionalEmail(value);
+    if (!plan) {
+      throw new ApiException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        "NOTIFICATION_DESTINATION_REQUIRED",
+        "A valid email destination is required.",
+      );
+    }
+    return plan;
+  }
+
+  private emailPlan(destination: string): NotificationPlan {
+    return {
+      channel: NotificationChannel.EMAIL,
+      destinationHash: deriveNotificationDestinationHash(
+        this.destinationHashSecret,
+        "EMAIL",
+        destination,
+      ),
+    };
+  }
 }

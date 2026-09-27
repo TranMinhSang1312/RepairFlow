@@ -1,6 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { parseApiEnvironment } from "@repairflow/config";
-import { createHash, createHmac } from "node:crypto";
+import {
+  buildStaffInvitationUrl,
+  deriveStaffInvitationToken,
+  hashPublicToken,
+} from "@repairflow/security";
+import { createHmac } from "node:crypto";
 
 export interface StaffInvitationTokenMetadata {
   invitationId: string;
@@ -19,27 +24,15 @@ export class StaffInvitationTokenService {
   }
 
   deriveRaw(metadata: StaffInvitationTokenMetadata): string {
-    return createHmac("sha256", this.secret)
-      .update(
-        JSON.stringify({
-          version: 1,
-          purpose: "ACCEPT_STAFF_INVITATION",
-          invitationId: metadata.invitationId,
-          expiresAt: metadata.expiresAt,
-        }),
-      )
-      .digest("base64url");
+    return deriveStaffInvitationToken(this.secret, metadata);
   }
 
   hash(rawToken: string): string {
-    return createHash("sha256").update(rawToken).digest("hex");
+    return hashPublicToken(rawToken);
   }
 
   publicUrl(metadata: StaffInvitationTokenMetadata): string {
-    return new URL(
-      `/join/${encodeURIComponent(this.deriveRaw(metadata))}`,
-      this.publicWebUrl,
-    ).toString();
+    return buildStaffInvitationUrl(this.publicWebUrl, this.deriveRaw(metadata));
   }
 
   emailFingerprint(email: string): string {

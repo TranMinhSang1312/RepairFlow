@@ -47,7 +47,12 @@ const provider =
       });
 const handler = new NotificationOutboxHandler(repository, resolver, provider);
 const processor = new OutboxProcessor(repository, handler, logger, workerId, {
-  eventTypes: ["QUOTE_SENT"],
+  eventTypes: [
+    "QUOTE_SENT",
+    "REPAIR_ORDER_READY",
+    "REPAIR_ORDER_COMPLETED",
+    "STAFF_INVITATION_CREATED",
+  ],
   notificationChannels: ["EMAIL"],
   batchSize: environment.WORKER_BATCH_SIZE,
   leaseMs: environment.WORKER_LEASE_MS,

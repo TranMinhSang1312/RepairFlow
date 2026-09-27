@@ -1,3 +1,5 @@
+import { escapeHtml, formatVietnamDate, safeInline } from "./email-template.utils.js";
+
 export const QUOTE_SENT_TEMPLATE_KEY = "QUOTE_SENT_V1";
 
 export interface QuoteSentEmailInput {
@@ -23,11 +25,7 @@ export function renderQuoteSentEmail(input: QuoteSentEmailInput): RenderedEmail 
   const orderCode = safeInline(input.orderCode, "phiếu sửa chữa");
   const deviceLabel = safeInline(input.deviceLabel, "Thiết bị");
   const amount = `${new Intl.NumberFormat("vi-VN").format(input.total)} ${safeInline(input.currency, "VND")}`;
-  const expiry = new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Ho_Chi_Minh",
-  }).format(input.expiresAt);
+  const expiry = formatVietnamDate(input.expiresAt);
   const subject = `[RepairFlow] Báo giá sửa chữa ${orderCode}`;
   const text = [
     `Xin chào ${customerName},`,
@@ -51,21 +49,4 @@ export function renderQuoteSentEmail(input: QuoteSentEmailInput): RenderedEmail 
   </body>
 </html>`;
   return { subject, text, html };
-}
-
-function safeInline(value: string, fallback: string): string {
-  const normalized = value
-    .replace(/[\r\n\t]+/gu, " ")
-    .replace(/\s{2,}/gu, " ")
-    .trim();
-  return normalized || fallback;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }

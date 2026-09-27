@@ -38,6 +38,10 @@ describe("staff membership management API", () => {
 
   afterAll(async () => {
     await prisma.authSession.deleteMany({ where: { userId: { in: [...userIds] } } });
+    await prisma.notificationDelivery.deleteMany({
+      where: { outboxEvent: { shopId: { in: shopIds } } },
+    });
+    await prisma.outboxEvent.deleteMany({ where: { shopId: { in: shopIds } } });
     await prisma.auditLog.deleteMany({ where: { shopId: { in: shopIds } } });
     await prisma.idempotencyRecord.deleteMany({ where: { shopId: { in: shopIds } } });
     await prisma.staffInvitation.deleteMany({ where: { shopId: { in: shopIds } } });
@@ -122,6 +126,26 @@ describe("staff membership management API", () => {
     const email = `rf039-tech-${randomUUID().slice(0, 8)}@example.com`;
     const created = await invite(owner, email);
 
+    const notification = await prisma.outboxEvent.findFirstOrThrow({
+      where: {
+        shopId: owner.shopId,
+        aggregateId: created.id,
+        eventType: "STAFF_INVITATION_CREATED",
+      },
+      include: { notifications: true },
+    });
+    expect(notification).toMatchObject({
+      aggregateType: "STAFF_INVITATION",
+      notifications: [{ channel: "EMAIL", status: "PENDING" }],
+    });
+    expect(notification.payload).toMatchObject({
+      invitationId: created.id,
+      channel: "EMAIL",
+      templateKey: "STAFF_INVITATION_V1",
+    });
+    expect(JSON.stringify(notification)).not.toContain(email);
+    expect(JSON.stringify(notification)).not.toContain(created.rawToken);
+
     const inspection = await request(app.getHttpServer())
       .get("/public/v1/staff-invitation")
       .set("X-RepairFlow-Invitation-Token", created.rawToken)
@@ -159,6 +183,52 @@ describe("staff membership management API", () => {
       .set("X-RepairFlow-Invitation-Token", created.rawToken)
       .send({ displayName: "Again", password: "another secure password" })
       .expect(409);
+  });
+
+  it("rolls invitation and audit back when notification outbox persistence fails", async () => {
+    const owner = await registerOwner("notification-rollback");
+    const email = `rf052-rollback-${randomUUID().slice(0, 8)}@example.com`;
+    const suffix = randomUUID().replaceAll("-", "");
+    const functionName = `rf052_invite_fail_${suffix}`;
+    const triggerName = `rf052_invite_trigger_${suffix}`;
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION "${functionName}"() RETURNS trigger AS $$
+      BEGIN
+        IF NEW."shopId" = '${owner.shopId}'::uuid AND NEW."eventType" = 'STAFF_INVITATION_CREATED' THEN
+          RAISE EXCEPTION 'forced RF-052 invitation outbox failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER "${triggerName}"
+      BEFORE INSERT ON "outbox_events"
+      FOR EACH ROW EXECUTE FUNCTION "${functionName}"()
+    `);
+    try {
+      await request(app.getHttpServer())
+        .post("/api/v1/staff-invitations")
+        .set("Authorization", `Bearer ${owner.token}`)
+        .set("X-Shop-Id", owner.shopId)
+        .set("Idempotency-Key", `rf052-rollback-${randomUUID()}`)
+        .send({ email, role: "TECHNICIAN" })
+        .expect(500);
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}" ON "outbox_events"`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${functionName}"()`);
+    }
+    expect(await prisma.staffInvitation.count({ where: { shopId: owner.shopId, email } })).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: { shopId: owner.shopId, action: "staff.invitation_created" },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.idempotencyRecord.count({
+        where: { shopId: owner.shopId, scope: "staff-invitations.create" },
+      }),
+    ).toBe(0);
   });
 
   it("enforces owner/receptionist/technician permissions and immediate deactivation", async () => {

@@ -13,6 +13,7 @@ import {
 } from "@prisma/client";
 
 import { PrismaService } from "../../infra/database/prisma.service.js";
+import type { NotificationPlan } from "../notifications/fake-notification.adapter.js";
 import type { TrackTokenMetadata } from "../public-access/public-token.service.js";
 
 const activeAssignment = {
@@ -230,6 +231,8 @@ export class HandoversRepository {
       handedOverAt: Date;
       warrantyEndsAt: Date | null;
       paymentRecorded: boolean;
+      tracking: TrackTokenMetadata;
+      notification: NotificationPlan | null;
     },
   ): Promise<void> {
     if (input.paymentRecorded) {
@@ -314,7 +317,26 @@ export class HandoversRepository {
           completionOutcome: input.completionOutcome,
           handedOverAt: input.handedOverAt.toISOString(),
           hasWarranty: input.warrantyEndsAt !== null,
+          tokenRecordId: input.tracking.tokenId,
+          tokenScope: TokenScope.TRACK_ORDER,
+          expiresAt: input.tracking.expiresAt,
+          ...(input.notification
+            ? {
+                channel: input.notification.channel,
+                templateKey: "HANDOVER_COMPLETED_V1",
+              }
+            : {}),
         },
+        ...(input.notification
+          ? {
+              notifications: {
+                create: {
+                  channel: input.notification.channel,
+                  destinationHash: input.notification.destinationHash,
+                },
+              },
+            }
+          : {}),
       },
     });
   }

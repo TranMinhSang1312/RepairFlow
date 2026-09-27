@@ -4,6 +4,7 @@ import { Injectable } from "@nestjs/common";
 import { MediaPurpose, Prisma, RepairOrderStatus } from "@prisma/client";
 
 import { PrismaService } from "../../../infra/database/prisma.service.js";
+import type { NotificationPlan } from "../../notifications/fake-notification.adapter.js";
 import type {
   RepairOrderTransitionCommand,
   TransactionClient,
@@ -164,6 +165,35 @@ export class RepairOrderStateMachineRepository {
         publicPayload: { status: command.targetStatus },
         privatePayload: command.reason ? { reason: command.reason } : Prisma.JsonNull,
         requestId: command.requestId,
+      },
+    });
+  }
+
+  createReadyNotification(
+    transaction: TransactionClient,
+    input: {
+      shopId: string;
+      repairOrderId: string;
+      notification: NotificationPlan;
+    },
+  ) {
+    return transaction.outboxEvent.create({
+      data: {
+        shopId: input.shopId,
+        eventType: "REPAIR_ORDER_READY",
+        aggregateType: "REPAIR_ORDER",
+        aggregateId: input.repairOrderId,
+        payload: {
+          repairOrderId: input.repairOrderId,
+          channel: input.notification.channel,
+          templateKey: "REPAIR_ORDER_READY_V1",
+        },
+        notifications: {
+          create: {
+            channel: input.notification.channel,
+            destinationHash: input.notification.destinationHash,
+          },
+        },
       },
     });
   }

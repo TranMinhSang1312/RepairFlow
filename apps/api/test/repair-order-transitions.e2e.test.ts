@@ -156,6 +156,10 @@ describe("repair-order transition API", () => {
 
   afterAll(async () => {
     const shopIds = [fixture.shopAId, fixture.shopBId];
+    await prisma.notificationDelivery.deleteMany({
+      where: { outboxEvent: { shopId: { in: shopIds } } },
+    });
+    await prisma.outboxEvent.deleteMany({ where: { shopId: { in: shopIds } } });
     await prisma.idempotencyRecord.deleteMany({ where: { shopId: { in: shopIds } } });
     await prisma.qcResultEvidence.deleteMany({ where: { shopId: { in: shopIds } } });
     await prisma.qcResult.deleteMany({ where: { shopId: { in: shopIds } } });
@@ -188,6 +192,7 @@ describe("repair-order transition API", () => {
     status?: RepairOrderStatus;
     assigned?: boolean;
     photo?: boolean;
+    email?: string;
   }): Promise<string> {
     const shopA = options?.shop !== "B";
     const shopId = shopA ? fixture.shopAId : fixture.shopBId;
@@ -207,7 +212,11 @@ describe("repair-order transition API", () => {
         reportedProblem: "Test problem",
         intakeCondition: "Device has visible scratches",
         consentAcknowledgedAt: new Date(),
-        customerSnapshot: { name: "Snapshot customer", phone: "0900000000" },
+        customerSnapshot: {
+          name: "Snapshot customer",
+          phone: "0900000000",
+          ...(options?.email ? { email: options.email } : {}),
+        },
         deviceSnapshot: { type: DeviceType.PHONE, brand: "Test", model: "Snapshot" },
         createdByUserId: shopA ? fixture.ownerId : fixture.userIds[3]!,
       },
@@ -465,7 +474,11 @@ describe("repair-order transition API", () => {
   });
 
   it("guards diagnosed non-repair and early cancellation outcomes", async () => {
-    const missingDiagnosis = await createOrder({ status: RepairOrderStatus.DIAGNOSING });
+    const readyEmail = `ready-${randomUUID().slice(0, 8)}@example.test`;
+    const missingDiagnosis = await createOrder({
+      status: RepairOrderStatus.DIAGNOSING,
+      email: readyEmail,
+    });
     expect(
       (
         await transitionRequest(missingDiagnosis, fixture.receptionistToken)
@@ -499,6 +512,21 @@ describe("repair-order transition API", () => {
       lockVersion: 1,
     });
     expect(ready.body.data.readyAt).toEqual(expect.any(String));
+    const readyOutbox = await prisma.outboxEvent.findFirstOrThrow({
+      where: { aggregateId: missingDiagnosis, eventType: "REPAIR_ORDER_READY" },
+      include: { notifications: true },
+    });
+    expect(readyOutbox).toMatchObject({
+      shopId: fixture.shopAId,
+      aggregateType: "REPAIR_ORDER",
+      notifications: [{ channel: "EMAIL", status: "PENDING" }],
+    });
+    expect(readyOutbox.payload).toEqual({
+      repairOrderId: missingDiagnosis,
+      channel: "EMAIL",
+      templateKey: "REPAIR_ORDER_READY_V1",
+    });
+    expect(JSON.stringify(readyOutbox)).not.toContain(readyEmail);
 
     const technicianOrder = await createOrder({
       status: RepairOrderStatus.DIAGNOSING,
@@ -542,6 +570,11 @@ describe("repair-order transition API", () => {
         reason: "Customer changed their mind",
       })
       .expect(200);
+    expect(
+      await prisma.outboxEvent.count({
+        where: { aggregateId: noteOnly, eventType: "REPAIR_ORDER_READY" },
+      }),
+    ).toBe(0);
 
     const missingReason = await createOrder({ status: RepairOrderStatus.DIAGNOSING });
     await transitionRequest(missingReason, fixture.receptionistToken)
@@ -616,6 +649,63 @@ describe("repair-order transition API", () => {
         await prisma.repairOrder.findUniqueOrThrow({ where: { id: blockedOrderId } }),
       ).toMatchObject({ status: RepairOrderStatus.DIAGNOSING, lockVersion: 0 });
     }
+  });
+
+  it("rolls the ready transition back when notification outbox persistence fails", async () => {
+    const orderId = await createOrder({
+      status: RepairOrderStatus.DIAGNOSING,
+      email: `rollback-ready-${randomUUID().slice(0, 8)}@example.test`,
+    });
+    await prisma.diagnosis.create({
+      data: {
+        shopId: fixture.shopAId,
+        repairOrderId: orderId,
+        revisionNo: 1,
+        finding: "Cannot repair",
+        recommendation: "Return device",
+        createdByUserId: fixture.ownerId,
+      },
+    });
+    const suffix = randomUUID().replaceAll("-", "");
+    const functionName = `rf052_ready_fail_${suffix}`;
+    const triggerName = `rf052_ready_trigger_${suffix}`;
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION "${functionName}"() RETURNS trigger AS $$
+      BEGIN
+        IF NEW."shopId" = '${fixture.shopAId}'::uuid AND NEW."eventType" = 'REPAIR_ORDER_READY' THEN
+          RAISE EXCEPTION 'forced RF-052 ready outbox failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER "${triggerName}"
+      BEFORE INSERT ON "outbox_events"
+      FOR EACH ROW EXECUTE FUNCTION "${functionName}"()
+    `);
+    try {
+      await transitionRequest(orderId, fixture.receptionistToken)
+        .send({
+          ...payload(RepairOrderStatus.READY_FOR_PICKUP),
+          completionOutcome: CompletionOutcome.UNREPAIRABLE,
+        })
+        .expect(500);
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}" ON "outbox_events"`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${functionName}"()`);
+    }
+    expect(await prisma.outboxEvent.count({ where: { aggregateId: orderId } })).toBe(0);
+    expect(
+      await prisma.orderEvent.count({
+        where: { repairOrderId: orderId, eventType: "ORDER_STATUS_CHANGED" },
+      }),
+    ).toBe(0);
+    expect(await prisma.repairOrder.findUniqueOrThrow({ where: { id: orderId } })).toMatchObject({
+      status: RepairOrderStatus.DIAGNOSING,
+      readyAt: null,
+      lockVersion: 0,
+    });
   });
 
   it("uses the current approved part scope for waiting and repair start", async () => {
