@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+import { AiCapability, PrismaClient } from "@prisma/client";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -79,6 +79,20 @@ async function seed(): Promise<void> {
       },
     },
   });
+
+  for (const capability of Object.values(AiCapability)) {
+    await prisma.aiCapabilitySetting.upsert({
+      where: { shopId_capability: { shopId: shop.id, capability } },
+      update: {},
+      create: {
+        shopId: shop.id,
+        capability,
+        enabled: false,
+        monthlyBudgetMicrousd: 0n,
+        maxRunCostMicrousd: 0n,
+      },
+    });
+  }
 }
 
 seed()

@@ -18,6 +18,7 @@ describe("environment parsing", () => {
     expect(api.LOG_LEVEL).toBe("info");
     expect(api.OBJECT_STORAGE_BUCKET).toBe("repairflow-private");
     expect(api.PUBLIC_WEB_URL).toBe("http://localhost:3000");
+    expect(api.AI_ENABLED).toBe(false);
     expect(web.NEXT_PUBLIC_API_URL).toBe("http://localhost:3001/api/v1");
     expect(worker).toMatchObject({
       WORKER_BATCH_SIZE: 10,
@@ -31,6 +32,15 @@ describe("environment parsing", () => {
       WORKER_ALERT_FAILURE_THRESHOLD: 3,
       WORKER_ALERT_DEAD_LETTER_THRESHOLD: 1,
       WORKER_NOTIFICATION_PROVIDER: "fake",
+      AI_ENABLED: false,
+      AI_PROVIDER: "fake",
+      AI_TIMEOUT_MS: 15000,
+      AI_MAX_OUTPUT_BYTES: 65536,
+      AI_CIRCUIT_BREAKER_THRESHOLD: 5,
+      AI_CIRCUIT_BREAKER_COOLDOWN_MS: 30000,
+      AI_WORKER_BATCH_SIZE: 2,
+      AI_WORKER_LEASE_MS: 120000,
+      AI_WORKER_MAX_ATTEMPTS: 2,
     });
   });
 
@@ -94,6 +104,78 @@ describe("environment parsing", () => {
         RESEND_FROM_EMAIL: "RepairFlow <notify@example.test>",
       }).RESEND_TIMEOUT_MS,
     ).toBe(10000);
+  });
+
+  it("validates enabled DeepSeek configuration without exposing the secret", () => {
+    const valid = parseWorkerEnvironment({
+      DATABASE_URL: "postgresql://localhost/repairflow",
+      ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+      AI_ENABLED: "true",
+      AI_PROVIDER: "deepseek",
+      DEEPSEEK_API_KEY: "deepseek-secret-canary",
+      DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+      DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "100000",
+      DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "200000",
+      AI_PRICE_TABLE_VERSION: "test-v1",
+    });
+    expect(valid.AI_ENABLED).toBe(true);
+    expect(valid.AI_PROVIDER).toBe("deepseek");
+
+    for (const invalid of [
+      {
+        DEEPSEEK_BASE_URL: "http://api.deepseek.test",
+        DEEPSEEK_API_KEY: "deepseek-secret-canary",
+        DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "100000",
+        DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "200000",
+      },
+      {
+        DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+        DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "100000",
+        DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "200000",
+      },
+      {
+        DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+        DEEPSEEK_API_KEY: "deepseek-secret-canary",
+        DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "0",
+        DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: "0",
+      },
+    ]) {
+      expect(() =>
+        parseWorkerEnvironment({
+          DATABASE_URL: "postgresql://localhost/repairflow",
+          ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+          AI_ENABLED: "true",
+          AI_PROVIDER: "deepseek",
+          ...invalid,
+        }),
+      ).toThrowError(expect.not.stringContaining("deepseek-secret-canary"));
+    }
+  });
+
+  it("does not allow enabled fake AI in production", () => {
+    expect(() =>
+      parseWorkerEnvironment({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        PUBLIC_TOKEN_SECRET: "production-public-token-secret-at-least-32-chars",
+        WORKER_NOTIFICATION_PROVIDER: "email",
+        RESEND_API_KEY: "resend-test-key",
+        RESEND_FROM_EMAIL: "RepairFlow <notify@example.test>",
+        AI_ENABLED: "true",
+        AI_PROVIDER: "fake",
+      }),
+    ).toThrow();
+  });
+
+  it("requires the AI lease to outlive provider timeout", () => {
+    expect(() =>
+      parseWorkerEnvironment({
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+        AI_TIMEOUT_MS: "15000",
+        AI_WORKER_LEASE_MS: "19000",
+      }),
+    ).toThrow();
   });
 
   it("rejects a missing database URL", () => {

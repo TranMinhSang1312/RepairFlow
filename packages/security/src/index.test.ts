@@ -9,6 +9,7 @@ import {
   deriveTrackPublicToken,
   hashPublicToken,
   normalizeNotificationDestination,
+  redactAiInput,
   secureHexEqual,
 } from "./index.js";
 
@@ -58,5 +59,21 @@ describe("shared security derivation", () => {
     expect(secureHexEqual(hash, "0".repeat(64))).toBe(false);
     expect(secureHexEqual(hash, "not-hex")).toBe(false);
     expect(secureHexEqual("a", "b")).toBe(false);
+  });
+
+  it("removes contact and credential canaries from AI input", () => {
+    const result = redactAiInput({
+      deviceType: "PHONE",
+      customerEmail: "person-canary@example.test",
+      notes: "Call +84 912 345 678 and never expose Bearer secret-token-canary",
+      nested: { unlockPin: "7391", symptom: "Không lên nguồn" },
+    });
+    const serialized = JSON.stringify(result.value);
+    expect(result.redactions).toBeGreaterThanOrEqual(4);
+    expect(serialized).not.toContain("person-canary");
+    expect(serialized).not.toContain("912 345 678");
+    expect(serialized).not.toContain("secret-token-canary");
+    expect(serialized).not.toContain("7391");
+    expect(serialized).toContain("Không lên nguồn");
   });
 });
