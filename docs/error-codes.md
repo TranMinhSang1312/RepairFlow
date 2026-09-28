@@ -100,9 +100,14 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 422 | `MEDIA_TYPE_NOT_ALLOWED` | MIME type is not on the allowlist. |
 | 422 | `MEDIA_TOO_LARGE` | File exceeds configured size. |
 | 409 | `MEDIA_UPLOAD_INCOMPLETE` | Intake references an upload not finalized. |
+| 409 | `AI_FEATURE_DISABLED` | Global or shop capability flag does not permit the AI request. |
+| 409 | `AI_SETTING_VERSION_CONFLICT` | AI capability settings changed concurrently. |
+| 409 | `AI_RUN_NOT_REVIEWABLE` | Run has not produced a successful draft that can be reviewed. |
 | 429 | `AI_BUDGET_EXCEEDED` | Shop AI usage budget is exhausted. |
 | 503 | `STORAGE_UNAVAILABLE` | Private object storage is temporarily unavailable. |
 | 503 | `AI_PROVIDER_UNAVAILABLE` | Provider is unavailable; manual flow remains usable. |
+| 503 | `AI_PROVIDER_OUTCOME_UNKNOWN` | A worker lease was recovered after provider execution may have begun; the run is not retried automatically. |
+| 403 | `AI_AUTHORIZATION_REVOKED` | The requesting membership or assignment became invalid before worker execution. |
 | 502 | `AI_OUTPUT_INVALID` | Provider output failed schema validation. |
 | 409 | `AI_DRAFT_ALREADY_APPLIED` | The same draft cannot be applied twice. |
 | 409 | `NOTIFICATION_RETRY_NOT_ALLOWED` | Notification job is no longer failed or dead-lettered and cannot be manually retried. |

@@ -24,6 +24,8 @@ export const Capability = {
   STAFF_MEMBERSHIP_READ: "STAFF_MEMBERSHIP_READ",
   STAFF_MEMBERSHIP_MANAGE: "STAFF_MEMBERSHIP_MANAGE",
   NOTIFICATION_OPERATIONS_MANAGE: "NOTIFICATION_OPERATIONS_MANAGE",
+  AI_ASSISTANCE_USE: "AI_ASSISTANCE_USE",
+  AI_SETTINGS_MANAGE: "AI_SETTINGS_MANAGE",
 } as const;
 
 export type Capability = (typeof Capability)[keyof typeof Capability];
@@ -47,6 +49,7 @@ const receptionistCapabilities = new Set<Capability>([
   Capability.HANDOVER_COMPLETE,
   Capability.WARRANTY_FOLLOW_UP_CREATE,
   Capability.STAFF_MEMBERSHIP_READ,
+  Capability.AI_ASSISTANCE_USE,
 ]);
 
 export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capability>>> = {
@@ -59,5 +62,6 @@ export const ROLE_CAPABILITIES: Readonly<Record<MembershipRole, ReadonlySet<Capa
     Capability.SERVICE_EXECUTION_WRITE,
     Capability.QC_TEMPLATE_READ,
     Capability.QC_RUN_SUBMIT,
+    Capability.AI_ASSISTANCE_USE,
   ]),
 };

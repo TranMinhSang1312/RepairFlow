@@ -33,3 +33,5 @@ export interface HealthResponse {
   timestamp: string;
   checks?: Record<string, "ok" | "unavailable" | "stale">;
 }
+
+export * from "./ai.js";

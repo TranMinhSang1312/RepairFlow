@@ -21,6 +21,7 @@ import { HandoversModule } from "./modules/handovers/handovers.module.js";
 import { WarrantiesModule } from "./modules/warranties/warranties.module.js";
 import { StaffMembershipsModule } from "./modules/staff-memberships/staff-memberships.module.js";
 import { NotificationOperationsModule } from "./modules/notification-operations/notification-operations.module.js";
+import { AiModule } from "./modules/ai/ai.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -40,6 +41,7 @@ const environment = parseApiEnvironment(process.env);
     WarrantiesModule,
     StaffMembershipsModule,
     NotificationOperationsModule,
+    AiModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,

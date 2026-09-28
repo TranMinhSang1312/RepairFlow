@@ -8,16 +8,28 @@ AI capabilities reduce repetitive entry and rewriting. They do not diagnose a de
 
 ## Execution contract
 
-1. An authorized staff request creates an `ai_runs` row with `QUEUED` status.
-2. The API creates an outbox/job record and returns `202` with the run ID.
-3. A worker loads only the authorized input required for the capability.
-4. The worker redacts prohibited personal or secret data.
-5. The AI Gateway calls a provider adapter with a versioned prompt and JSON schema.
-6. Output is parsed and validated. Invalid output is failed, never partially applied.
-7. A successful output is stored in `ai_runs.output` and displayed as an `AI draft`.
-8. A staff member explicitly accepts or edits the draft through a normal domain command.
+1. Global `AI_ENABLED` and the active shop's capability flag must both be enabled.
+2. An authorized, idempotent staff request locks the capability's UTC usage period, reserves the maximum run cost, creates an `ai_runs` row with `QUEUED` status, and creates `AI_RUN_REQUESTED_V1` in one transaction.
+3. The outbox payload contains only `schemaVersion`, `aiRunId`, `shopId`, and `capability`; the API returns `202` with the run ID and never calls the provider.
+4. A worker rechecks authorization and loads only the authorized input required for the capability.
+5. The worker redacts prohibited personal or secret data.
+6. The provider-neutral AI Gateway calls the configured adapter with a versioned prompt and JSON schema.
+7. Output is parsed and validated. Invalid output is failed, never partially applied.
+8. A successful output is stored in `ai_runs.output` and displayed as an `AI draft`.
+9. A staff member explicitly accepts, edits, or rejects the draft. Review telemetry is written once; any domain change still uses the normal domain command.
 
 Every run records capability, provider, model, prompt version, status, timestamps, confidence where meaningful, and whether a user accepted the result.
+
+The execution state machine is `QUEUED -> RUNNING -> SUCCEEDED | FAILED`. `REJECTED` is retained for a successful draft subsequently rejected by staff. A recovered event whose run is already `RUNNING` fails with `AI_PROVIDER_OUTCOME_UNKNOWN` instead of calling the provider again, because the prior request may have reached the provider.
+
+## Feature flags, budget, and review
+
+- Every shop has a disabled-by-default setting for each capability.
+- Budget accounting is scoped by `(shop, capability, UTC month)`. Enqueue reserves the configured upper-bound cost under a database lock; worker completion reconciles reserved and spent micro-USD.
+- Same `Idempotency-Key` and payload return the same run without another reservation or outbox event. A changed payload returns `IDEMPOTENCY_KEY_REUSED`.
+- OWNER manages flags and budgets with optimistic concurrency. Global disable overrides shop settings.
+- `GET /api/v1/ai/runs/{id}` never returns the private input reference, prompt, provider body, token usage, or provider request identifier.
+- `POST /api/v1/ai/runs/{id}/review` validates reviewed output against the capability schema, calculates edit distance, discards the submitted reviewed value, and never mutates a business entity.
 
 ## Common restrictions
 
@@ -31,6 +43,8 @@ Never send:
 
 The gateway applies timeout, retry limit, per-shop budget, output-size limit, and circuit breaking. Provider failure returns a stable AI error code and leaves the manual workflow available.
 
+DeepSeek is the first production adapter through its OpenAI-compatible Responses API. Application code depends only on `AiGateway`; provider SDK/types and response bodies stay inside the adapter. CI uses a deterministic fake and makes no external AI request.
+
 ## Capability: `DEVICE_OCR`
 
 ### Purpose
@@ -42,7 +56,7 @@ Extract candidate identity fields from an authorized photo of a device label or 
 ```json
 {
   "mediaAssetId": "uuid",
-  "allowedFields": ["brand", "model", "serial", "imei"]
+  "allowedFields": ["brand", "model", "serialNumber", "imei"]
 }
 ```
 
@@ -52,7 +66,7 @@ Extract candidate identity fields from an authorized photo of a device label or 
 {
   "brand": {"value": "Apple", "confidence": 0.97},
   "model": {"value": "iPhone 13", "confidence": 0.92},
-  "serial": {"value": "ABC123", "confidence": 0.88},
+  "serialNumber": {"value": "ABC123", "confidence": 0.88},
   "imei": {"value": "123456789012345", "confidence": 0.91},
   "warnings": []
 }

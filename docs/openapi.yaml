@@ -245,6 +245,7 @@ paths:
                     type: array
                     items: {$ref: '#/components/schemas/Device'}
         '404': {$ref: '#/components/responses/NotFound'}
+
     post:
       tags: [Devices]
       summary: Create a device for a customer
@@ -926,6 +927,51 @@ paths:
         '410': {$ref: '#/components/responses/PublicLinkExpired'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
+  /api/v1/settings/ai:
+    get:
+      tags: [AI]
+      summary: Read tenant AI capability flags and budgets
+      operationId: getAiSettings
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+      responses:
+        '200':
+          description: AI settings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiSettingsResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/settings/ai/{capability}:
+    patch:
+      tags: [AI]
+      summary: Update one tenant AI capability flag and budget
+      operationId: updateAiSetting
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - name: capability
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/AiCapability'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateAiSettingRequest'}
+      responses:
+        '200':
+          description: Updated AI settings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiSettingsResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
   /api/v1/ai/device-ocr:
     post:
       tags: [AI]
@@ -969,6 +1015,34 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/AiRunResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/ai/runs/{aiRunId}/review:
+    post:
+      tags: [AI]
+      summary: Review one successful AI draft without mutating a domain entity
+      operationId: reviewAiRun
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - name: aiRunId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewAiRunRequest'}
+      responses:
+        '200':
+          description: Reviewed AI run
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
 
 components:
   securitySchemes:
@@ -2180,22 +2254,93 @@ components:
               type: array
               description: Safe child/source progress without internal UUIDs.
               items: {$ref: '#/components/schemas/LinkedOrderSummary'}
-    AiRunResponse:
+    AiCapability:
+      type: string
+      enum: [DEVICE_OCR, INTAKE_DRAFT, CHECKLIST_SUGGESTION, CUSTOMER_SUMMARY]
+    AiReviewOutcome:
+      type: string
+      enum: [ACCEPTED_UNCHANGED, ACCEPTED_EDITED, REJECTED]
+    AiCapabilitySetting:
       type: object
+      additionalProperties: false
+      required:
+        [capability, enabled, effectiveEnabled, monthlyBudgetMicrousd, maxRunCostMicrousd, lockVersion, updatedAt]
+      properties:
+        capability: {$ref: '#/components/schemas/AiCapability'}
+        enabled: {type: boolean}
+        effectiveEnabled: {type: boolean}
+        monthlyBudgetMicrousd: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        maxRunCostMicrousd: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        lockVersion: {type: integer, minimum: 0}
+        updatedAt: {type: [string, 'null'], format: date-time}
+    AiSettingsResponse:
+      type: object
+      additionalProperties: false
       required: [data]
       properties:
         data:
           type: object
-          required: [id, capability, status, promptVersion, createdAt]
+          additionalProperties: false
+          required: [globalEnabled, capabilities]
+          properties:
+            globalEnabled: {type: boolean}
+            capabilities:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items: {$ref: '#/components/schemas/AiCapabilitySetting'}
+    UpdateAiSettingRequest:
+      type: object
+      additionalProperties: false
+      required: [enabled, monthlyBudgetMicrousd, maxRunCostMicrousd, expectedLockVersion]
+      properties:
+        enabled: {type: boolean}
+        monthlyBudgetMicrousd: {type: string, pattern: '^(0|[1-9][0-9]{0,17})$'}
+        maxRunCostMicrousd: {type: string, pattern: '^(0|[1-9][0-9]{0,17})$'}
+        expectedLockVersion: {type: integer, minimum: 0}
+    ReviewAiRunRequest:
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome: {$ref: '#/components/schemas/AiReviewOutcome'}
+        reviewedOutput:
+          type: object
+          description: Required for accepted outcomes and discarded after server-side validation and edit-distance calculation.
+        timeSavedSeconds: {type: integer, minimum: 0, maximum: 3600}
+    AiRunResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            [id, capability, status, promptVersion, schemaVersion, output, confidence, errorCode, review, createdAt, startedAt, completedAt]
           properties:
             id: {$ref: '#/components/schemas/Uuid'}
-            capability: {type: string, enum: [DEVICE_OCR, INTAKE_DRAFT, CHECKLIST_SUGGESTION, CUSTOMER_SUMMARY]}
+            capability: {$ref: '#/components/schemas/AiCapability'}
             status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, REJECTED]}
             promptVersion: {type: string}
+            schemaVersion: {type: string}
             output: {type: [object, 'null']}
             confidence: {type: [number, 'null'], minimum: 0, maximum: 1}
             errorCode: {type: [string, 'null']}
+            review:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [outcome, reviewedAt, editDistancePermille, timeSavedSeconds]
+                  properties:
+                    outcome: {$ref: '#/components/schemas/AiReviewOutcome'}
+                    reviewedAt: {$ref: '#/components/schemas/IsoDateTime'}
+                    editDistancePermille: {type: [integer, 'null'], minimum: 0, maximum: 1000}
+                    timeSavedSeconds: {type: [integer, 'null'], minimum: 0, maximum: 3600}
+                - {type: 'null'}
             createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+            startedAt: {type: [string, 'null'], format: date-time}
+            completedAt: {type: [string, 'null'], format: date-time}
 
 security:
   - bearerAuth: []

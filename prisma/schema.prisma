@@ -174,6 +174,12 @@ enum AiRunStatus {
   REJECTED
 }
 
+enum AiReviewOutcome {
+  ACCEPTED_UNCHANGED
+  ACCEPTED_EDITED
+  REJECTED
+}
+
 enum OutboxStatus {
   PENDING
   PROCESSING
@@ -205,9 +211,13 @@ model User {
 
   memberships              ShopMembership[]
   sessions                 AuthSession[]
-  staffInvitationsCreated  StaffInvitation[] @relation("StaffInvitationCreatedBy")
-  staffInvitationsAccepted StaffInvitation[] @relation("StaffInvitationAcceptedBy")
-  staffInvitationsRevoked  StaffInvitation[] @relation("StaffInvitationRevokedBy")
+  staffInvitationsCreated  StaffInvitation[]     @relation("StaffInvitationCreatedBy")
+  staffInvitationsAccepted StaffInvitation[]     @relation("StaffInvitationAcceptedBy")
+  staffInvitationsRevoked  StaffInvitation[]     @relation("StaffInvitationRevokedBy")
+  aiRunsRequested          AiRun[]               @relation("AiRunRequestedBy")
+  aiRunsAccepted           AiRun[]               @relation("AiRunAcceptedBy")
+  aiRunsReviewed           AiRun[]               @relation("AiRunReviewedBy")
+  aiSettingsUpdated        AiCapabilitySetting[] @relation("AiSettingUpdatedBy")
 
   @@map("users")
 }
@@ -244,17 +254,20 @@ model Shop {
   createdAt               DateTime @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime @updatedAt @db.Timestamptz(3)
 
-  branches           Branch[]
-  memberships        ShopMembership[]
-  staffInvitations   StaffInvitation[]
-  customers          Customer[]
-  devices            Device[]
-  repairOrders       RepairOrder[]
-  mediaAssets        MediaAsset[]
-  qcTemplates        QcTemplate[]
-  auditLogs          AuditLog[]
-  outboxEvents       OutboxEvent[]
-  idempotencyRecords IdempotencyRecord[]
+  branches             Branch[]
+  memberships          ShopMembership[]
+  staffInvitations     StaffInvitation[]
+  customers            Customer[]
+  devices              Device[]
+  repairOrders         RepairOrder[]
+  mediaAssets          MediaAsset[]
+  qcTemplates          QcTemplate[]
+  auditLogs            AuditLog[]
+  outboxEvents         OutboxEvent[]
+  idempotencyRecords   IdempotencyRecord[]
+  aiRuns               AiRun[]
+  aiCapabilitySettings AiCapabilitySetting[]
+  aiUsagePeriods       AiUsagePeriod[]
 
   @@map("shops")
 }
@@ -857,29 +870,82 @@ model PublicAccessToken {
 }
 
 model AiRun {
-  id                String       @id @default(uuid()) @db.Uuid
-  shopId            String       @db.Uuid
-  repairOrderId     String?      @db.Uuid
-  capability        AiCapability
-  status            AiRunStatus  @default(QUEUED)
-  provider          String?
-  model             String?
-  promptVersion     String
-  inputReference    Json
-  output            Json?
-  confidence        Decimal?     @db.Decimal(5, 4)
-  errorCode         String?
-  requestedByUserId String       @db.Uuid
-  acceptedByUserId  String?      @db.Uuid
-  acceptedAt        DateTime?    @db.Timestamptz(3)
-  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
-  completedAt       DateTime?    @db.Timestamptz(3)
+  id                    String           @id @default(uuid()) @db.Uuid
+  shopId                String           @db.Uuid
+  repairOrderId         String?          @db.Uuid
+  capability            AiCapability
+  status                AiRunStatus      @default(QUEUED)
+  provider              String?
+  model                 String?
+  promptVersion         String
+  schemaVersion         String           @default("1")
+  inputReference        Json
+  output                Json?
+  confidence            Decimal?         @db.Decimal(5, 4)
+  errorCode             String?
+  requestedByUserId     String           @db.Uuid
+  acceptedByUserId      String?          @db.Uuid
+  acceptedAt            DateTime?        @db.Timestamptz(3)
+  startedAt             DateTime?        @db.Timestamptz(3)
+  completedAt           DateTime?        @db.Timestamptz(3)
+  inputTokens           Int?
+  outputTokens          Int?
+  reservedCostMicrousd  BigInt           @default(0)
+  estimatedCostMicrousd BigInt?
+  priceTableVersion     String?
+  latencyMs             Int?
+  reviewOutcome         AiReviewOutcome?
+  reviewedByUserId      String?          @db.Uuid
+  reviewedAt            DateTime?        @db.Timestamptz(3)
+  editDistancePermille  Int?
+  timeSavedSeconds      Int?
+  createdAt             DateTime         @default(now()) @db.Timestamptz(3)
 
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Restrict)
   repairOrder RepairOrder? @relation(fields: [shopId, repairOrderId], references: [shopId, id], onDelete: Restrict)
+  requestedBy User         @relation("AiRunRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  acceptedBy  User?        @relation("AiRunAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  reviewedBy  User?        @relation("AiRunReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
 
   @@index([shopId, repairOrderId, capability, createdAt])
+  @@index([shopId, status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([status, createdAt])
   @@map("ai_runs")
+}
+
+model AiCapabilitySetting {
+  shopId                String       @db.Uuid
+  capability            AiCapability
+  enabled               Boolean      @default(false)
+  monthlyBudgetMicrousd BigInt       @default(0)
+  maxRunCostMicrousd    BigInt       @default(0)
+  lockVersion           Int          @default(0)
+  updatedByUserId       String?      @db.Uuid
+  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime     @updatedAt @db.Timestamptz(3)
+
+  shop      Shop  @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  updatedBy User? @relation("AiSettingUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  @@id([shopId, capability])
+  @@index([shopId, enabled])
+  @@map("ai_capability_settings")
+}
+
+model AiUsagePeriod {
+  shopId           String       @db.Uuid
+  capability       AiCapability
+  periodStart      DateTime     @db.Date
+  reservedMicrousd BigInt       @default(0)
+  spentMicrousd    BigInt       @default(0)
+  lockVersion      Int          @default(0)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@id([shopId, capability, periodStart])
+  @@map("ai_usage_periods")
 }
 
 model AuditLog {

@@ -6,6 +6,12 @@ const optionalNonEmptyString = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().min(1).optional(),
 );
+const environmentBoolean = z.preprocess((value) => {
+  if (value === undefined || value === "") return undefined;
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  return value;
+}, z.boolean());
 
 const apiEnvironmentSchema = z
   .object({
@@ -23,6 +29,7 @@ const apiEnvironmentSchema = z
     OBJECT_STORAGE_BUCKET: z.string().min(1).default("repairflow-private"),
     OBJECT_STORAGE_ACCESS_KEY: z.string().min(1).default("repairflow"),
     OBJECT_STORAGE_SECRET_KEY: z.string().min(8).default("local-development-only"),
+    AI_ENABLED: environmentBoolean.default(false),
   })
   .superRefine((environment, context) => {
     if (
@@ -83,6 +90,21 @@ const workerEnvironmentSchema = z
     RESEND_FROM_EMAIL: optionalNonEmptyString,
     RESEND_REPLY_TO_EMAIL: optionalNonEmptyString,
     RESEND_TIMEOUT_MS: z.coerce.number().int().min(500).max(60000).default(10000),
+    AI_ENABLED: environmentBoolean.default(false),
+    AI_PROVIDER: z.enum(["fake", "deepseek"]).default("fake"),
+    AI_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).default(15000),
+    AI_MAX_OUTPUT_BYTES: z.coerce.number().int().min(1024).max(1048576).default(65536),
+    AI_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().min(1).max(100).default(5),
+    AI_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce.number().int().min(1000).max(3600000).default(30000),
+    AI_WORKER_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(2),
+    AI_WORKER_LEASE_MS: z.coerce.number().int().min(5000).max(900000).default(120000),
+    AI_WORKER_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(2),
+    AI_PRICE_TABLE_VERSION: z.string().min(1).max(64).default("unpriced-local"),
+    DEEPSEEK_API_KEY: optionalNonEmptyString,
+    DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com"),
+    DEEPSEEK_MODEL: z.string().min(1).max(128).default("deepseek-flash"),
+    DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: z.coerce.number().int().min(0).default(0),
+    DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS: z.coerce.number().int().min(0).default(0),
   })
   .superRefine((environment, context) => {
     if (environment.WORKER_READINESS_STALE_MS < environment.WORKER_POLL_INTERVAL_MS * 2) {
@@ -90,6 +112,13 @@ const workerEnvironmentSchema = z
         code: "custom",
         path: ["WORKER_READINESS_STALE_MS"],
         message: "Worker readiness stale window must cover at least two poll intervals.",
+      });
+    }
+    if (environment.AI_WORKER_LEASE_MS < environment.AI_TIMEOUT_MS + 5000) {
+      context.addIssue({
+        code: "custom",
+        path: ["AI_WORKER_LEASE_MS"],
+        message: "AI worker lease must exceed the provider timeout by at least five seconds.",
       });
     }
     if (!environment.PUBLIC_TOKEN_SECRET && !environment.ACCESS_TOKEN_SECRET) {
@@ -136,6 +165,43 @@ const workerEnvironmentSchema = z
           message: "Email provider requires RESEND_FROM_EMAIL.",
         });
       }
+    }
+    if (environment.AI_ENABLED && environment.AI_PROVIDER === "deepseek") {
+      if (!environment.DEEPSEEK_API_KEY) {
+        context.addIssue({
+          code: "custom",
+          path: ["DEEPSEEK_API_KEY"],
+          message: "DeepSeek AI requires DEEPSEEK_API_KEY.",
+        });
+      }
+      if (!environment.DEEPSEEK_BASE_URL.startsWith("https://")) {
+        context.addIssue({
+          code: "custom",
+          path: ["DEEPSEEK_BASE_URL"],
+          message: "DeepSeek AI requires an HTTPS base URL.",
+        });
+      }
+      if (
+        environment.DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS <= 0 ||
+        environment.DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS <= 0
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["AI_PRICE_TABLE_VERSION"],
+          message: "DeepSeek AI requires positive versioned input and output prices.",
+        });
+      }
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.AI_ENABLED &&
+      environment.AI_PROVIDER === "fake"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["AI_PROVIDER"],
+        message: "Production cannot enable AI through the deterministic fake provider.",
+      });
     }
   });
 

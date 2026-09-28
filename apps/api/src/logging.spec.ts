@@ -34,6 +34,11 @@ describe("HTTP log redaction", () => {
           password: "password-secret",
           accessToken: "access-token-body-secret",
           refreshToken: "refresh-token-body-secret",
+          reviewedOutput: { summary: "ai-reviewed-output-canary" },
+          inputReference: { notes: "ai-input-canary" },
+          source: { text: "ai-source-canary" },
+          text: "ai-text-canary",
+          transcript: "ai-transcript-canary",
         },
       },
       res: {
@@ -54,6 +59,11 @@ describe("HTTP log redaction", () => {
       "response-cookie-secret",
       "staff-invitation-secret",
       "request-id-header-secret",
+      "ai-reviewed-output-canary",
+      "ai-input-canary",
+      "ai-source-canary",
+      "ai-text-canary",
+      "ai-transcript-canary",
     ]) {
       expect(output).not.toContain(secret);
     }

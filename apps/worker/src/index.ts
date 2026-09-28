@@ -3,7 +3,16 @@ import { loadWorkspaceEnvironment } from "@repairflow/config/node";
 import { hostname } from "node:os";
 import pino from "pino";
 
+import { AiCapabilityRegistry } from "./ai/ai-capability-registry.js";
+import { DeepSeekResponsesAiGateway } from "./ai/deepseek-responses-ai-gateway.js";
+import { DeterministicFakeAiGateway } from "./ai/deterministic-fake-ai-gateway.js";
+import type { AiGateway } from "./ai/ai-gateway.js";
+import { AiOutboxHandler } from "./ai/ai-outbox-handler.js";
+import { AiOutboxRepository } from "./ai/ai-outbox-repository.js";
+import { AiPriceCalculator } from "./ai/ai-price-calculator.js";
+import { CircuitBreaker } from "./ai/circuit-breaker.js";
 import { createPrismaClient } from "./database.js";
+import { CompositeOutboxProcessor } from "./outbox/composite-outbox-processor.js";
 import { DatabaseNotificationMessageResolver } from "./outbox/notification-message-resolver.js";
 import { DeterministicFakeNotificationProvider } from "./outbox/notification-provider.js";
 import { NotificationOutboxHandler } from "./outbox/notification-outbox-handler.js";
@@ -21,14 +30,27 @@ const environment = parseWorkerEnvironment(process.env);
 const logger = pino({
   level: environment.LOG_LEVEL,
   redact: {
-    paths: ["password", "token", "authorization", "cookie"],
+    paths: [
+      "password",
+      "token",
+      "authorization",
+      "cookie",
+      "apiKey",
+      "input",
+      "inputReference",
+      "output",
+      "reviewedOutput",
+      "prompt",
+      "providerBody",
+      "req.headers.authorization",
+    ],
     censor: "[REDACTED]",
   },
 });
 
 const workerId = `${hostname()}:${process.pid}`;
 const prisma = createPrismaClient(environment.DATABASE_URL);
-const repository = new OutboxRepository(prisma);
+const notificationRepository = new OutboxRepository(prisma);
 const publicTokenSecret = environment.PUBLIC_TOKEN_SECRET ?? environment.ACCESS_TOKEN_SECRET;
 if (!publicTokenSecret) throw new Error("WORKER_PUBLIC_TOKEN_SECRET_REQUIRED");
 const resolver = new DatabaseNotificationMessageResolver(
@@ -36,7 +58,7 @@ const resolver = new DatabaseNotificationMessageResolver(
   publicTokenSecret,
   environment.PUBLIC_WEB_URL,
 );
-const provider =
+const notificationProvider =
   environment.WORKER_NOTIFICATION_PROVIDER === "fake"
     ? new DeterministicFakeNotificationProvider()
     : new ResendEmailNotificationProvider({
@@ -48,21 +70,79 @@ const provider =
           : {}),
         timeoutMs: environment.RESEND_TIMEOUT_MS,
       });
-const handler = new NotificationOutboxHandler(repository, resolver, provider);
-const processor = new OutboxProcessor(repository, handler, logger, workerId, {
-  eventTypes: [
-    "QUOTE_SENT",
-    "REPAIR_ORDER_READY",
-    "REPAIR_ORDER_COMPLETED",
-    "STAFF_INVITATION_CREATED",
-  ],
-  notificationChannels: ["EMAIL"],
-  batchSize: environment.WORKER_BATCH_SIZE,
-  leaseMs: environment.WORKER_LEASE_MS,
-  maxAttempts: environment.WORKER_MAX_ATTEMPTS,
+const notificationHandler = new NotificationOutboxHandler(
+  notificationRepository,
+  resolver,
+  notificationProvider,
+);
+const notificationProcessor = new OutboxProcessor(
+  notificationRepository,
+  notificationHandler,
+  logger,
+  `${workerId}:notifications`,
+  {
+    eventTypes: [
+      "QUOTE_SENT",
+      "REPAIR_ORDER_READY",
+      "REPAIR_ORDER_COMPLETED",
+      "STAFF_INVITATION_CREATED",
+    ],
+    notificationChannels: ["EMAIL"],
+    batchSize: environment.WORKER_BATCH_SIZE,
+    leaseMs: environment.WORKER_LEASE_MS,
+    maxAttempts: environment.WORKER_MAX_ATTEMPTS,
+    retryBaseMs: environment.WORKER_RETRY_BASE_MS,
+    retryMaxMs: environment.WORKER_RETRY_MAX_MS,
+  },
+);
+
+const aiGateway: AiGateway =
+  environment.AI_ENABLED && environment.AI_PROVIDER === "deepseek"
+    ? new DeepSeekResponsesAiGateway({
+        apiKey: environment.DEEPSEEK_API_KEY!,
+        baseUrl: environment.DEEPSEEK_BASE_URL,
+        model: environment.DEEPSEEK_MODEL,
+      })
+    : new DeterministicFakeAiGateway();
+const aiRepository = new AiOutboxRepository(prisma);
+const aiHandler = new AiOutboxHandler(
+  prisma,
+  aiGateway,
+  new AiCapabilityRegistry(),
+  new AiPriceCalculator({
+    version: environment.AI_PRICE_TABLE_VERSION,
+    provider: aiGateway.provider,
+    model: aiGateway.model,
+    inputPriceMicrousdPerMillionTokens:
+      aiGateway.provider === "deepseek"
+        ? BigInt(environment.DEEPSEEK_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS)
+        : 0n,
+    outputPriceMicrousdPerMillionTokens:
+      aiGateway.provider === "deepseek"
+        ? BigInt(environment.DEEPSEEK_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS)
+        : 0n,
+  }),
+  new CircuitBreaker({
+    provider: `${aiGateway.provider}/${aiGateway.model}`,
+    failureThreshold: environment.AI_CIRCUIT_BREAKER_THRESHOLD,
+    cooldownMs: environment.AI_CIRCUIT_BREAKER_COOLDOWN_MS,
+  }),
+  {
+    globalEnabled: environment.AI_ENABLED,
+    timeoutMs: environment.AI_TIMEOUT_MS,
+    maxOutputBytes: environment.AI_MAX_OUTPUT_BYTES,
+  },
+);
+const aiProcessor = new OutboxProcessor(aiRepository, aiHandler, logger, `${workerId}:ai`, {
+  eventTypes: [],
+  notificationChannels: [],
+  batchSize: environment.AI_WORKER_BATCH_SIZE,
+  leaseMs: environment.AI_WORKER_LEASE_MS,
+  maxAttempts: environment.AI_WORKER_MAX_ATTEMPTS,
   retryBaseMs: environment.WORKER_RETRY_BASE_MS,
   retryMaxMs: environment.WORKER_RETRY_MAX_MS,
 });
+const processor = new CompositeOutboxProcessor([notificationProcessor, aiProcessor]);
 const metrics = new WorkerMetrics(
   logger,
   environment.WORKER_ALERT_FAILURE_THRESHOLD,
