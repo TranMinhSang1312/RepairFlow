@@ -106,7 +106,9 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 429 | `AI_BUDGET_EXCEEDED` | Shop AI usage budget is exhausted. |
 | 503 | `STORAGE_UNAVAILABLE` | Private object storage is temporarily unavailable. |
 | 503 | `AI_PROVIDER_UNAVAILABLE` | Provider is unavailable; manual flow remains usable. |
-| 503 | `AI_MEDIA_UNAVAILABLE` | The private OCR image disappeared, changed or could not be read safely before provider execution. |
+| 503 | `AI_MEDIA_UNAVAILABLE` | Private AI media disappeared, changed, failed cleanup or could not be read safely before provider execution. |
+| 422 | `AI_INPUT_PROHIBITED` | AI input contains a credential, token, prompt injection or no useful content after required redaction. |
+| 503 | `AI_TRANSCRIPTION_UNAVAILABLE` | Intake audio transcription is disabled, misconfigured or failed before the draft provider call. |
 | 503 | `AI_PROVIDER_OUTCOME_UNKNOWN` | A worker lease was recovered after provider execution may have begun; the run is not retried automatically. |
 | 403 | `AI_AUTHORIZATION_REVOKED` | The requesting membership or assignment became invalid before worker execution. |
 | 502 | `AI_OUTPUT_INVALID` | Provider output failed schema validation. |

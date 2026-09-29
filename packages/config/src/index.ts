@@ -31,6 +31,9 @@ const apiEnvironmentSchema = z
     OBJECT_STORAGE_SECRET_KEY: z.string().min(8).default("local-development-only"),
     AI_ENABLED: environmentBoolean.default(false),
     AI_MAX_IMAGE_BYTES: z.coerce.number().int().min(1).max(15_000_000).default(10_000_000),
+    AI_INTAKE_AUDIO_ENABLED: environmentBoolean.default(false),
+    AI_TRANSCRIPTION_PROVIDER: z.enum(["disabled", "fake"]).default("disabled"),
+    AI_MAX_AUDIO_BYTES: z.coerce.number().int().min(1).max(25_000_000).default(10_000_000),
   })
   .superRefine((environment, context) => {
     if (
@@ -62,6 +65,28 @@ const apiEnvironmentSchema = z
         code: "custom",
         path: ["OBJECT_STORAGE_SECRET_KEY"],
         message: "Production requires a non-default object-storage secret.",
+      });
+    }
+    if (
+      environment.AI_INTAKE_AUDIO_ENABLED &&
+      environment.AI_TRANSCRIPTION_PROVIDER === "disabled"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["AI_TRANSCRIPTION_PROVIDER"],
+        message: "Intake audio requires an explicitly configured transcription provider.",
+      });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.AI_INTAKE_AUDIO_ENABLED &&
+      environment.AI_TRANSCRIPTION_PROVIDER === "fake"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["AI_TRANSCRIPTION_PROVIDER"],
+        message:
+          "Production intake audio cannot use the deterministic fake transcription provider.",
       });
     }
   });
@@ -96,6 +121,10 @@ const workerEnvironmentSchema = z
     AI_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).default(15000),
     AI_MAX_OUTPUT_BYTES: z.coerce.number().int().min(1024).max(1048576).default(65536),
     AI_MAX_IMAGE_BYTES: z.coerce.number().int().min(1).max(15_000_000).default(10_000_000),
+    AI_INTAKE_AUDIO_ENABLED: environmentBoolean.default(false),
+    AI_TRANSCRIPTION_PROVIDER: z.enum(["disabled", "fake"]).default("disabled"),
+    AI_MAX_AUDIO_BYTES: z.coerce.number().int().min(1).max(25_000_000).default(10_000_000),
+    AI_MAX_AUDIO_DURATION_SECONDS: z.coerce.number().int().min(1).max(900).default(300),
     OBJECT_STORAGE_ENDPOINT: z.string().url().default("http://localhost:9000"),
     OBJECT_STORAGE_REGION: z.string().min(1).default("us-east-1"),
     OBJECT_STORAGE_BUCKET: z.string().min(1).default("repairflow-private"),
@@ -209,6 +238,28 @@ const workerEnvironmentSchema = z
           message: "DeepSeek AI requires positive versioned input and output prices.",
         });
       }
+    }
+    if (
+      environment.AI_INTAKE_AUDIO_ENABLED &&
+      environment.AI_TRANSCRIPTION_PROVIDER === "disabled"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["AI_TRANSCRIPTION_PROVIDER"],
+        message: "Intake audio requires an explicitly configured transcription provider.",
+      });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.AI_INTAKE_AUDIO_ENABLED &&
+      environment.AI_TRANSCRIPTION_PROVIDER === "fake"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["AI_TRANSCRIPTION_PROVIDER"],
+        message:
+          "Production intake audio cannot use the deterministic fake transcription provider.",
+      });
     }
     if (
       environment.NODE_ENV === "production" &&

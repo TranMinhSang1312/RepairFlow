@@ -6,6 +6,8 @@ import {
   CUSTOMER_SUMMARY_SCHEMA_VERSION,
   DEVICE_OCR_PROMPT_VERSION,
   DEVICE_OCR_SCHEMA_VERSION,
+  INTAKE_DRAFT_PROMPT_VERSION,
+  INTAKE_DRAFT_SCHEMA_VERSION,
 } from "@repairflow/contracts";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -27,6 +29,11 @@ import {
   DeviceOcrMediaError,
   type DeviceOcrMediaLoader,
 } from "./capabilities/device-ocr/device-ocr-media-loader.js";
+import type { IntakeAudioMediaLoader } from "./capabilities/intake-draft/intake-audio-media-loader.js";
+import type {
+  TranscriptionGateway,
+  TranscriptionRequest,
+} from "../transcription/transcription-gateway.js";
 
 loadWorkspaceEnvironment();
 
@@ -188,6 +195,9 @@ describe("AI outbox handler", () => {
     gateway: AiGateway,
     globalEnabled = true,
     deviceOcrMediaLoader?: DeviceOcrMediaLoader,
+    intakeAudioMediaLoader?: IntakeAudioMediaLoader,
+    transcriptionGateway?: TranscriptionGateway,
+    intakeAudioEnabled = false,
   ) {
     return new AiOutboxHandler(
       prisma,
@@ -201,8 +211,10 @@ describe("AI outbox handler", () => {
         outputPriceMicrousdPerMillionTokens: 2_000_000n,
       }),
       new CircuitBreaker({ provider: "fake", failureThreshold: 2, cooldownMs: 30_000 }),
-      { globalEnabled, timeoutMs: 1_000, maxOutputBytes: 4_096 },
+      { globalEnabled, timeoutMs: 1_000, maxOutputBytes: 4_096, intakeAudioEnabled },
       deviceOcrMediaLoader,
+      intakeAudioMediaLoader,
+      transcriptionGateway,
     );
   }
 
@@ -358,6 +370,149 @@ describe("AI outbox handler", () => {
     ).resolves.toMatchObject({
       status: AiRunStatus.FAILED,
       errorCode: "AI_OUTPUT_INVALID",
+      output: null,
+    });
+  });
+
+  it("generates a normalized intake draft from a redacted text snapshot", async () => {
+    const fixture = await createFixture({
+      capability: AiCapability.INTAKE_DRAFT,
+      promptVersion: INTAKE_DRAFT_PROMPT_VERSION,
+      schemaVersion: INTAKE_DRAFT_SCHEMA_VERSION,
+      inputReference: {
+        sourceType: "TEXT",
+        transcript: "Khách 0901234567, customer@example.test báo máy tự tắt nguồn.",
+        deviceType: "PHONE",
+        language: "vi",
+      },
+    });
+    const gateway = new ScriptedGateway(
+      successResult({
+        reportedProblem: "  Máy tự tắt nguồn. ",
+        visibleCondition: " Có vết xước nhẹ. ",
+        accessories: [" Ốp lưng "],
+        customerClaims: [" Chưa từng sửa máy "],
+        uncertainties: [" Chưa xác nhận tình trạng pin "],
+      }),
+    );
+    await handler(gateway).handle(fixture.event, NOW);
+    const providerInput = JSON.stringify(gateway.requests[0]!.input);
+    expect(providerInput).not.toContain("0901234567");
+    expect(providerInput).not.toContain("customer@example.test");
+    await expect(
+      prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+    ).resolves.toMatchObject({
+      status: AiRunStatus.SUCCEEDED,
+      output: {
+        reportedProblem: "Máy tự tắt nguồn.",
+        visibleCondition: "Có vết xước nhẹ.",
+        accessories: ["Ốp lưng"],
+        customerClaims: ["Chưa từng sửa máy"],
+        uncertainties: ["Chưa xác nhận tình trạng pin"],
+      },
+    });
+  });
+
+  it("transcribes authorized audio in memory and never persists raw audio or transcript", async () => {
+    const fixture = await createFixture({
+      capability: AiCapability.INTAKE_DRAFT,
+      promptVersion: INTAKE_DRAFT_PROMPT_VERSION,
+      schemaVersion: INTAKE_DRAFT_SCHEMA_VERSION,
+      inputReference: {
+        sourceType: "AUDIO",
+        mediaAssetId: "33333333-3333-4333-8333-333333333333",
+        consentAcknowledged: true,
+        deviceType: "LAPTOP",
+        language: "vi",
+      },
+    });
+    const bytes = new Uint8Array([11, 22, 33, 44]);
+    const dispose = vi.fn(() => bytes.fill(0));
+    const cleanup = vi.fn().mockResolvedValue(undefined);
+    const loader = {
+      load: vi.fn().mockResolvedValue({
+        audio: { mediaType: "audio/wav", bytes },
+        durationSeconds: 2,
+        dispose,
+        cleanup,
+      }),
+    } as unknown as IntakeAudioMediaLoader;
+    const transcriptionRequests: TranscriptionRequest[] = [];
+    const transcription: TranscriptionGateway = {
+      provider: "fake",
+      transcribe: async (request) => {
+        transcriptionRequests.push(request);
+        return {
+          transcript: "Khách 0901234567 báo máy nóng, email audio@example.test",
+          provider: "fake",
+          model: "fake-transcription-v1",
+          latencyMs: 1,
+        };
+      },
+    };
+    const gateway = new ScriptedGateway(
+      successResult({
+        reportedProblem: "Máy nóng khi sử dụng.",
+        visibleCondition: "Chưa có mô tả ngoại quan.",
+        accessories: [],
+        customerClaims: ["Máy nóng khi sử dụng"],
+        uncertainties: ["Cần kiểm tra nhiệt độ thực tế"],
+      }),
+    );
+    await handler(gateway, true, undefined, loader, transcription, true).handle(fixture.event, NOW);
+    expect(loader.load).toHaveBeenCalledWith({
+      shopId: fixture.run.shopId,
+      mediaAssetId: "33333333-3333-4333-8333-333333333333",
+      now: NOW,
+    });
+    expect(transcriptionRequests).toHaveLength(1);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect([...bytes]).toEqual([0, 0, 0, 0]);
+    const providerInput = JSON.stringify(gateway.requests[0]!.input);
+    expect(providerInput).not.toContain("0901234567");
+    expect(providerInput).not.toContain("audio@example.test");
+    const persisted = JSON.stringify(
+      await prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+      (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value),
+    );
+    expect(persisted).not.toContain("11,22,33,44");
+    expect(persisted).not.toContain("audio@example.test");
+  });
+
+  it("fails audio before the AI provider when transcription is unavailable", async () => {
+    const fixture = await createFixture({
+      capability: AiCapability.INTAKE_DRAFT,
+      promptVersion: INTAKE_DRAFT_PROMPT_VERSION,
+      schemaVersion: INTAKE_DRAFT_SCHEMA_VERSION,
+      inputReference: {
+        sourceType: "AUDIO",
+        mediaAssetId: "33333333-3333-4333-8333-333333333333",
+        consentAcknowledged: true,
+        deviceType: "PHONE",
+        language: "vi",
+      },
+    });
+    const loader = {
+      load: vi.fn().mockResolvedValue({
+        audio: { mediaType: "audio/wav", bytes: new Uint8Array([1]) },
+        durationSeconds: 1,
+        dispose: vi.fn(),
+        cleanup: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as unknown as IntakeAudioMediaLoader;
+    const transcription: TranscriptionGateway = {
+      provider: "fake",
+      transcribe: vi.fn().mockRejectedValue(new Error("provider body must not escape")),
+    };
+    const gateway = new ScriptedGateway(successResult());
+    await handler(gateway, true, undefined, loader, transcription, true).handle(fixture.event, NOW);
+    expect(gateway.requests).toHaveLength(0);
+    await expect(
+      prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+    ).resolves.toMatchObject({
+      status: AiRunStatus.FAILED,
+      errorCode: "AI_TRANSCRIPTION_UNAVAILABLE",
       output: null,
     });
   });

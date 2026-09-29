@@ -55,6 +55,8 @@ import type {
   CustomerSummaryOutput,
   AiReviewOutcome,
   AiCapabilityAvailability,
+  CreateIntakeDraftInput,
+  IntakeDraftOutput,
   DeviceOcrField,
   DeviceOcrOutput,
 } from "./types";
@@ -82,6 +84,11 @@ export interface IntakeApi {
     file: File,
     onProgress?: (progress: UploadProgress) => void,
   ): Promise<string>;
+  uploadIntakeAudio?(
+    shopId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string>;
   createRepairOrder(
     shopId: string,
     input: CreateRepairOrderInput,
@@ -93,13 +100,18 @@ export interface IntakeApi {
     input: { mediaAssetId: string; allowedFields?: DeviceOcrField[] },
     idempotencyKey: string,
   ): Promise<AiRunView>;
+  createIntakeDraft?(
+    shopId: string,
+    input: CreateIntakeDraftInput,
+    idempotencyKey: string,
+  ): Promise<AiRunView>;
   getAiRun?(shopId: string, aiRunId: string): Promise<AiRunView>;
   reviewAiRun?(
     shopId: string,
     aiRunId: string,
     input: {
       outcome: AiReviewOutcome;
-      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput;
+      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput;
       timeSavedSeconds?: number;
     },
   ): Promise<AiRunView>;
@@ -639,6 +651,50 @@ export class BrowserIntakeApi
     return presigned.data.mediaAssetId;
   }
 
+  async uploadIntakeAudio(
+    shopId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<string> {
+    onProgress?.({ stage: "presigning" });
+    const presigned = await this.request<
+      DataResponse<{ mediaAssetId: string; uploadUrl: string; expiresAt: string }>
+    >("/media/presign", {
+      method: "POST",
+      shopId,
+      body: JSON.stringify({
+        purpose: "AI_INTAKE_AUDIO",
+        originalName: file.name,
+        mimeType: file.type,
+        byteSize: file.size,
+      }),
+    });
+    onProgress?.({ stage: "uploading" });
+    let upload: Response;
+    try {
+      upload = await this.fetcher.call(globalThis, presigned.data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+    } catch {
+      throw new RepairFlowApiError(
+        0,
+        "MEDIA_UPLOAD_FAILED",
+        "Không thể tải bản ghi âm lên. Hãy kiểm tra kết nối và thử lại.",
+      );
+    }
+    if (!upload.ok) {
+      throw new RepairFlowApiError(
+        upload.status,
+        "MEDIA_UPLOAD_FAILED",
+        "Không thể tải bản ghi âm lên. Hãy thử lại.",
+      );
+    }
+    onProgress?.({ stage: "complete" });
+    return presigned.data.mediaAssetId;
+  }
+
   async createRepairOrder(
     shopId: string,
     input: CreateRepairOrderInput,
@@ -713,6 +769,20 @@ export class BrowserIntakeApi
     return response.data;
   }
 
+  async createIntakeDraft(
+    shopId: string,
+    input: CreateIntakeDraftInput,
+    idempotencyKey: string,
+  ): Promise<AiRunView> {
+    const response = await this.request<DataResponse<AiRunView>>("/ai/intake-drafts", {
+      method: "POST",
+      shopId,
+      idempotencyKey,
+      body: JSON.stringify(input),
+    });
+    return response.data;
+  }
+
   async getAiRun(shopId: string, aiRunId: string): Promise<AiRunView> {
     const response = await this.request<DataResponse<AiRunView>>(
       `/ai/runs/${encodeURIComponent(aiRunId)}`,
@@ -726,7 +796,7 @@ export class BrowserIntakeApi
     aiRunId: string,
     input: {
       outcome: AiReviewOutcome;
-      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput;
+      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput;
       timeSavedSeconds?: number;
     },
   ): Promise<AiRunView> {

@@ -27,6 +27,7 @@ export interface PrivateObjectReadResult {
 
 export interface PrivateObjectReader {
   read(objectKey: string, maxBytes: number): Promise<PrivateObjectReadResult>;
+  delete?(objectKey: string): Promise<void>;
 }
 
 export interface LoadedDeviceOcrImage {

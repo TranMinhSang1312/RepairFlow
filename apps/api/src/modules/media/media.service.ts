@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs constructor and storage tokens at runtime for DI. */
 
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
+import { MediaPurpose } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
 import { ApiException } from "../../common/api-exception.js";
@@ -15,10 +16,13 @@ import { MediaRepository } from "./media.repository.js";
 const MAX_UPLOAD_BYTES = 15_000_000;
 const UPLOAD_TTL_MS = 10 * 60 * 1000;
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_AUDIO_MIME_TYPES = new Set(["audio/wav", "audio/x-wav"]);
 const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
 };
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,11 +30,19 @@ interface PresignMediaResponse {
   data: { mediaAssetId: string; uploadUrl: string; expiresAt: string };
 }
 
+export const MEDIA_UPLOAD_OPTIONS = Symbol("repairflow.media.upload-options");
+export interface MediaUploadOptions {
+  intakeAudioEnabled: boolean;
+  transcriptionProvider: "disabled" | "fake";
+  maxAudioBytes: number;
+}
+
 @Injectable()
 export class MediaService {
   constructor(
     private readonly repository: MediaRepository,
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStoragePort,
+    @Inject(MEDIA_UPLOAD_OPTIONS) private readonly options: MediaUploadOptions,
   ) {}
 
   async presignIntake(
@@ -47,6 +59,13 @@ export class MediaService {
     dto: PresignOrderMediaDto,
   ): Promise<PresignMediaResponse> {
     if (!UUID_PATTERN.test(repairOrderId)) throw this.notFound();
+    if (dto.purpose === MediaPurpose.AI_INTAKE_AUDIO) {
+      throw new ApiException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        "MEDIA_TYPE_NOT_ALLOWED",
+        "AI intake audio must use the unbound intake upload flow.",
+      );
+    }
     const orderId = repairOrderId.toLowerCase();
     if (!(await this.repository.findVisibleOrder(tenant, orderId))) throw this.notFound();
     this.assertUploadMetadata(dto);
@@ -54,7 +73,25 @@ export class MediaService {
   }
 
   private assertUploadMetadata(dto: PresignOrderMediaDto): void {
-    if (!ALLOWED_MIME_TYPES.has(dto.mimeType)) {
+    const intakeAudio = dto.purpose === MediaPurpose.AI_INTAKE_AUDIO;
+    if (intakeAudio && !this.options.intakeAudioEnabled) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        "AI_FEATURE_DISABLED",
+        "AI intake audio is disabled.",
+      );
+    }
+    if (intakeAudio && this.options.transcriptionProvider === "disabled") {
+      throw new ApiException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "AI_TRANSCRIPTION_UNAVAILABLE",
+        "Audio transcription is unavailable.",
+      );
+    }
+    const mimeAllowed = intakeAudio
+      ? ALLOWED_AUDIO_MIME_TYPES.has(dto.mimeType)
+      : ALLOWED_MIME_TYPES.has(dto.mimeType);
+    if (!mimeAllowed) {
       throw new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         "MEDIA_TYPE_NOT_ALLOWED",
@@ -62,7 +99,8 @@ export class MediaService {
         [{ field: "mimeType", code: "MEDIA_TYPE_NOT_ALLOWED" }],
       );
     }
-    if (dto.byteSize > MAX_UPLOAD_BYTES) {
+    const maxBytes = intakeAudio ? this.options.maxAudioBytes : MAX_UPLOAD_BYTES;
+    if (dto.byteSize > maxBytes) {
       throw new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         "MEDIA_TOO_LARGE",
@@ -80,7 +118,9 @@ export class MediaService {
     const expiresAt = new Date(Date.now() + UPLOAD_TTL_MS);
     const folder = repairOrderId
       ? `orders/${repairOrderId}/${dto.purpose.toLowerCase()}`
-      : "intake";
+      : dto.purpose === MediaPurpose.AI_INTAKE_AUDIO
+        ? "intake-audio"
+        : "intake";
     const objectKey = `shops/${tenant.shopId}/${folder}/${randomUUID()}.${EXTENSION_BY_MIME[dto.mimeType]}`;
     const data = {
       purpose: dto.purpose,

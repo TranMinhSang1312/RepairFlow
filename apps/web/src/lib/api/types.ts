@@ -55,9 +55,27 @@ export interface DeviceOcrOutput {
   warnings: string[];
 }
 
+export interface IntakeDraftOutput {
+  reportedProblem: string;
+  visibleCondition: string;
+  accessories: string[];
+  customerClaims: string[];
+  uncertainties: string[];
+}
+
+export type CreateIntakeDraftInput = {
+  deviceType: DeviceType;
+  language: "vi";
+  source:
+    | { type: "TEXT"; text: string }
+    | { type: "TRANSCRIPT"; text: string; sourceMediaAssetId?: string }
+    | { type: "AUDIO"; mediaAssetId: string; consentAcknowledged: true };
+};
+
 export interface AiCapabilityAvailability {
   capability: AiCapability;
   effectiveEnabled: boolean;
+  audioEffectiveEnabled?: boolean;
 }
 
 export interface AiRunView {
@@ -66,7 +84,7 @@ export interface AiRunView {
   status: AiRunStatus;
   promptVersion: string;
   schemaVersion: string;
-  output: CustomerSummaryOutput | DeviceOcrOutput | null;
+  output: CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput | null;
   confidence: number | null;
   errorCode: string | null;
   review: {

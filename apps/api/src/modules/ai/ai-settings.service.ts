@@ -7,7 +7,11 @@ import { ApiException } from "../../common/api-exception.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import type { UpdateAiCapabilitySettingDto } from "./ai.dto.js";
 import { AiRepository } from "./ai.repository.js";
-import { AI_GLOBAL_ENABLED } from "./ai.tokens.js";
+import {
+  AI_GLOBAL_ENABLED,
+  AI_INTAKE_AUDIO_ENABLED,
+  AI_TRANSCRIPTION_PROVIDER,
+} from "./ai.tokens.js";
 import { toAiSettingView, type AiSettingsResponse } from "./ai.types.js";
 
 @Injectable()
@@ -15,6 +19,9 @@ export class AiSettingsService {
   constructor(
     private readonly repository: AiRepository,
     @Inject(AI_GLOBAL_ENABLED) private readonly globalEnabled: boolean,
+    @Inject(AI_INTAKE_AUDIO_ENABLED) private readonly intakeAudioEnabled: boolean,
+    @Inject(AI_TRANSCRIPTION_PROVIDER)
+    private readonly transcriptionProvider: "disabled" | "fake",
   ) {}
 
   async list(tenant: TenantContext): Promise<AiSettingsResponse> {
@@ -37,6 +44,15 @@ export class AiSettingsService {
       data: Object.values(AiCapability).map((capability) => ({
         capability,
         effectiveEnabled: this.globalEnabled && (enabled.get(capability) ?? false),
+        ...(capability === AiCapability.INTAKE_DRAFT
+          ? {
+              audioEffectiveEnabled:
+                this.globalEnabled &&
+                (enabled.get(capability) ?? false) &&
+                this.intakeAudioEnabled &&
+                this.transcriptionProvider !== "disabled",
+            }
+          : {}),
       })),
     };
   }

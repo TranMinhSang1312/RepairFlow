@@ -999,6 +999,33 @@ paths:
         '429': {$ref: '#/components/responses/RateLimited'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
 
+  /api/v1/ai/intake-drafts:
+    post:
+      tags: [AI]
+      summary: Queue a structured intake draft from sanitized text, transcript or gated audio
+      operationId: queueIntakeDraft
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateIntakeDraftRequest'}
+      responses:
+        '202':
+          description: Intake-draft AI run queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+
   /api/v1/ai/capabilities:
     get:
       tags: [AI]
@@ -1682,11 +1709,22 @@ components:
         byteSize: {type: integer, minimum: 1, maximum: 15000000}
         checksumSha256: {type: [string, 'null'], pattern: '^[a-fA-F0-9]{64}$'}
     PresignIntakeMediaRequest:
-      allOf:
-        - {$ref: '#/components/schemas/PresignMediaRequest'}
+      oneOf:
+        - allOf:
+            - {$ref: '#/components/schemas/PresignMediaRequest'}
+            - type: object
+              properties:
+                purpose: {type: string, const: INTAKE}
         - type: object
+          additionalProperties: false
+          required: [purpose, originalName, mimeType, byteSize]
           properties:
-            purpose: {type: string, const: INTAKE}
+            purpose: {type: string, const: AI_INTAKE_AUDIO}
+            originalName: {type: string, minLength: 1, maxLength: 255}
+            mimeType: {type: string, enum: [audio/wav, audio/x-wav]}
+            byteSize: {type: integer, minimum: 1, maximum: 25000000}
+            checksumSha256: {type: [string, 'null'], pattern: '^[a-fA-F0-9]{64}$'}
+          description: Available only when the separately gated transcription boundary is configured.
     PresignMediaResponse:
       type: object
       required: [data]
@@ -2316,6 +2354,9 @@ components:
             properties:
               capability: {$ref: '#/components/schemas/AiCapability'}
               effectiveEnabled: {type: boolean}
+              audioEffectiveEnabled:
+                type: boolean
+                description: Present for INTAKE_DRAFT; false until an audited transcription provider is configured.
     AiReviewOutcome:
       type: string
       enum: [ACCEPTED_UNCHANGED, ACCEPTED_EDITED, REJECTED]
@@ -2395,6 +2436,46 @@ components:
           uniqueItems: true
           items: {type: string, enum: [brand, model, serialNumber, imei]}
       description: The server and worker resolve the private object. Image bytes, object keys and URLs are never accepted from the client.
+    CreateIntakeDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [source, deviceType, language]
+      properties:
+        source:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [type, text]
+              properties:
+                type: {type: string, const: TEXT}
+                text: {type: string, minLength: 1, maxLength: 8000}
+            - type: object
+              additionalProperties: false
+              required: [type, text]
+              properties:
+                type: {type: string, const: TRANSCRIPT}
+                text: {type: string, minLength: 1, maxLength: 8000}
+                sourceMediaAssetId: {$ref: '#/components/schemas/Uuid'}
+            - type: object
+              additionalProperties: false
+              required: [type, mediaAssetId, consentAcknowledged]
+              properties:
+                type: {type: string, const: AUDIO}
+                mediaAssetId: {$ref: '#/components/schemas/Uuid'}
+                consentAcknowledged: {type: boolean, const: true}
+        deviceType: {type: string, enum: [PHONE, LAPTOP, TABLET, OTHER]}
+        language: {type: string, const: vi}
+      description: Text is normalized and redacted before persistence. Audio never enters the outbox and remains disabled without a configured transcription provider.
+    IntakeDraftOutput:
+      type: object
+      additionalProperties: false
+      required: [reportedProblem, visibleCondition, accessories, customerClaims, uncertainties]
+      properties:
+        reportedProblem: {type: string, minLength: 1, maxLength: 2000}
+        visibleCondition: {type: string, minLength: 1, maxLength: 2000}
+        accessories: {type: array, maxItems: 30, items: {type: string, minLength: 1, maxLength: 200}}
+        customerClaims: {type: array, maxItems: 30, items: {type: string, minLength: 1, maxLength: 500}}
+        uncertainties: {type: array, maxItems: 30, items: {type: string, minLength: 1, maxLength: 500}}
     DeviceOcrCandidate:
       type: object
       additionalProperties: false

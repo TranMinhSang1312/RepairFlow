@@ -1,7 +1,7 @@
 import { Transform } from "class-transformer";
 import { MediaPurpose } from "@prisma/client";
 import {
-  Equals,
+  IsIn,
   IsEnum,
   IsInt,
   IsOptional,
@@ -41,6 +41,6 @@ export class PresignOrderMediaDto {
 }
 
 export class PresignIntakeMediaDto extends PresignOrderMediaDto {
-  @Equals(MediaPurpose.INTAKE)
+  @IsIn([MediaPurpose.INTAKE, MediaPurpose.AI_INTAKE_AUDIO])
   declare purpose: MediaPurpose;
 }

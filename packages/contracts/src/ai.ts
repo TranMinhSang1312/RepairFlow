@@ -11,6 +11,12 @@ export const CUSTOMER_SUMMARY_PROMPT_VERSION = "customer-summary-v1";
 export const CUSTOMER_SUMMARY_SCHEMA_VERSION = "1";
 export const DEVICE_OCR_PROMPT_VERSION = "device-ocr-v1";
 export const DEVICE_OCR_SCHEMA_VERSION = "1";
+export const INTAKE_DRAFT_PROMPT_VERSION = "intake-draft-v1";
+export const INTAKE_DRAFT_SCHEMA_VERSION = "1";
+export const INTAKE_DRAFT_SOURCE_TYPES = ["TEXT", "TRANSCRIPT", "AUDIO"] as const;
+export type IntakeDraftSourceType = (typeof INTAKE_DRAFT_SOURCE_TYPES)[number];
+export const INTAKE_DRAFT_LANGUAGES = ["vi"] as const;
+export type IntakeDraftLanguage = (typeof INTAKE_DRAFT_LANGUAGES)[number];
 export const DEVICE_OCR_FIELDS = ["brand", "model", "serialNumber", "imei"] as const;
 export type DeviceOcrField = (typeof DEVICE_OCR_FIELDS)[number];
 
@@ -25,6 +31,14 @@ export interface DeviceOcrOutput {
   serialNumber: DeviceOcrCandidate;
   imei: DeviceOcrCandidate;
   warnings: string[];
+}
+
+export interface IntakeDraftOutput {
+  reportedProblem: string;
+  visibleCondition: string;
+  accessories: string[];
+  customerClaims: string[];
+  uncertainties: string[];
 }
 export const CUSTOMER_SUMMARY_TONES = ["CLEAR_NEUTRAL"] as const;
 export type CustomerSummaryTone = (typeof CUSTOMER_SUMMARY_TONES)[number];
@@ -239,11 +253,11 @@ export function isValidAiOutput(capability: AiCapabilityName, value: unknown): b
           "uncertainties",
           "visibleCondition",
         ]) &&
-        boundedString(value.reportedProblem, 1, 2000) &&
-        boundedString(value.visibleCondition, 1, 2000) &&
-        boundedStringArray(value.accessories, 30, 200) &&
-        boundedStringArray(value.customerClaims, 30, 500) &&
-        boundedStringArray(value.uncertainties, 30, 500)
+        validIntakeDraftText(value.reportedProblem, 1, 2000) &&
+        validIntakeDraftText(value.visibleCondition, 1, 2000) &&
+        validIntakeDraftArray(value.accessories, 30, 200) &&
+        validIntakeDraftArray(value.customerClaims, 30, 500) &&
+        validIntakeDraftArray(value.uncertainties, 30, 500)
       );
     case "CHECKLIST_SUGGESTION": {
       if (
@@ -272,6 +286,37 @@ export function isValidAiOutput(capability: AiCapabilityName, value: unknown): b
       return new Set(value.claimsUsed).size === value.claimsUsed.length;
     }
   }
+}
+
+const INTAKE_UNSAFE_TEXT =
+  /<\/?[a-z][^>]*>|(?:https?:\/\/|www\.)\S+|(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?|system\s+prompt|developer\s+message)/iu;
+const INTAKE_PROHIBITED_CLAIM =
+  /\b(?:diagnos(?:is|ed)|price|cost|deadline|guaranteed?)\b|(?:warranty\s+(?:is|will|until)|chẩn\s*đoán|giá\s*(?:sửa|là)|chi\s*phí|bảo\s*hành\s+(?:\d+|trong|đến)|cam\s*kết|chắc\s*chắn\s*sửa|hoàn\s*thành\s*(?:vào|trước))/iu;
+
+function validIntakeDraftText(value: unknown, minimum: number, maximum: number): value is string {
+  return (
+    boundedString(value, minimum, maximum) &&
+    value === normalizePlainText(value) &&
+    !hasControlCharacter(value) &&
+    !INTAKE_UNSAFE_TEXT.test(value) &&
+    !INTAKE_PROHIBITED_CLAIM.test(value)
+  );
+}
+
+function validIntakeDraftArray(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= maxItems &&
+    value.every((entry) => validIntakeDraftText(entry, 1, maxLength))
+  );
+}
+
+export function normalizePlainText(value: string): string {
+  return value.normalize("NFKC").replace(/\s+/gu, " ").trim();
 }
 
 function hasControlCharacter(value: string): boolean {

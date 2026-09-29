@@ -13,6 +13,7 @@ import { AiPriceCalculator } from "./ai/ai-price-calculator.js";
 import { CircuitBreaker } from "./ai/circuit-breaker.js";
 import { DeviceOcrMediaLoader } from "./ai/capabilities/device-ocr/device-ocr-media-loader.js";
 import { S3PrivateObjectReader } from "./ai/capabilities/device-ocr/s3-private-object-reader.js";
+import { IntakeAudioMediaLoader } from "./ai/capabilities/intake-draft/intake-audio-media-loader.js";
 import { createPrismaClient } from "./database.js";
 import { CompositeOutboxProcessor } from "./outbox/composite-outbox-processor.js";
 import { DatabaseNotificationMessageResolver } from "./outbox/notification-message-resolver.js";
@@ -25,6 +26,7 @@ import { ResendEmailNotificationProvider } from "./outbox/resend-email.provider.
 import { WorkerMetrics } from "./observability/worker-metrics.js";
 import { WorkerOperationsServer } from "./observability/worker-operations-server.js";
 import { WorkerReadiness } from "./observability/worker-readiness.js";
+import { DeterministicFakeTranscriptionGateway } from "./transcription/deterministic-fake-transcription-gateway.js";
 import { workerHealth } from "./worker";
 
 loadWorkspaceEnvironment();
@@ -46,6 +48,9 @@ const logger = pino({
       "providerBody",
       "images",
       "base64Data",
+      "audio",
+      "bytes",
+      "transcript",
       "objectKey",
       "req.headers.authorization",
     ],
@@ -110,6 +115,17 @@ const aiGateway: AiGateway =
       })
     : new DeterministicFakeAiGateway();
 const aiRepository = new AiOutboxRepository(prisma);
+const privateObjectReader = new S3PrivateObjectReader({
+  endpoint: environment.OBJECT_STORAGE_ENDPOINT,
+  region: environment.OBJECT_STORAGE_REGION,
+  bucket: environment.OBJECT_STORAGE_BUCKET,
+  accessKeyId: environment.OBJECT_STORAGE_ACCESS_KEY,
+  secretAccessKey: environment.OBJECT_STORAGE_SECRET_KEY,
+});
+const transcriptionGateway =
+  environment.AI_INTAKE_AUDIO_ENABLED && environment.AI_TRANSCRIPTION_PROVIDER === "fake"
+    ? new DeterministicFakeTranscriptionGateway()
+    : undefined;
 const aiHandler = new AiOutboxHandler(
   prisma,
   aiGateway,
@@ -136,18 +152,16 @@ const aiHandler = new AiOutboxHandler(
     globalEnabled: environment.AI_ENABLED,
     timeoutMs: environment.AI_TIMEOUT_MS,
     maxOutputBytes: environment.AI_MAX_OUTPUT_BYTES,
+    intakeAudioEnabled: environment.AI_INTAKE_AUDIO_ENABLED,
   },
-  new DeviceOcrMediaLoader(
+  new DeviceOcrMediaLoader(prisma, privateObjectReader, environment.AI_MAX_IMAGE_BYTES),
+  new IntakeAudioMediaLoader(
     prisma,
-    new S3PrivateObjectReader({
-      endpoint: environment.OBJECT_STORAGE_ENDPOINT,
-      region: environment.OBJECT_STORAGE_REGION,
-      bucket: environment.OBJECT_STORAGE_BUCKET,
-      accessKeyId: environment.OBJECT_STORAGE_ACCESS_KEY,
-      secretAccessKey: environment.OBJECT_STORAGE_SECRET_KEY,
-    }),
-    environment.AI_MAX_IMAGE_BYTES,
+    privateObjectReader,
+    environment.AI_MAX_AUDIO_BYTES,
+    environment.AI_MAX_AUDIO_DURATION_SECONDS,
   ),
+  transcriptionGateway,
 );
 const aiProcessor = new OutboxProcessor(aiRepository, aiHandler, logger, `${workerId}:ai`, {
   eventTypes: [],

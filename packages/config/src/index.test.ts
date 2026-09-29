@@ -19,6 +19,7 @@ describe("environment parsing", () => {
     expect(api.OBJECT_STORAGE_BUCKET).toBe("repairflow-private");
     expect(api.PUBLIC_WEB_URL).toBe("http://localhost:3000");
     expect(api.AI_ENABLED).toBe(false);
+    expect(api.AI_INTAKE_AUDIO_ENABLED).toBe(false);
     expect(web.NEXT_PUBLIC_API_URL).toBe("http://localhost:3001/api/v1");
     expect(worker).toMatchObject({
       WORKER_BATCH_SIZE: 10,
@@ -36,6 +37,8 @@ describe("environment parsing", () => {
       AI_PROVIDER: "fake",
       AI_TIMEOUT_MS: 15000,
       AI_MAX_OUTPUT_BYTES: 65536,
+      AI_INTAKE_AUDIO_ENABLED: false,
+      AI_TRANSCRIPTION_PROVIDER: "disabled",
       AI_CIRCUIT_BREAKER_THRESHOLD: 5,
       AI_CIRCUIT_BREAKER_COOLDOWN_MS: 30000,
       AI_WORKER_BATCH_SIZE: 2,
@@ -163,6 +166,28 @@ describe("environment parsing", () => {
         RESEND_FROM_EMAIL: "RepairFlow <notify@example.test>",
         AI_ENABLED: "true",
         AI_PROVIDER: "fake",
+      }),
+    ).toThrow();
+  });
+
+  it("keeps audio disabled without a provider and rejects fake transcription in production", () => {
+    expect(() =>
+      parseWorkerEnvironment({
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "test-secret-that-is-at-least-32-characters-long",
+        AI_INTAKE_AUDIO_ENABLED: "true",
+        AI_TRANSCRIPTION_PROVIDER: "disabled",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseApiEnvironment({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://localhost/repairflow",
+        ACCESS_TOKEN_SECRET: "production-secret-that-is-at-least-32-characters",
+        PUBLIC_TOKEN_SECRET: "production-public-token-secret-at-least-32-chars",
+        OBJECT_STORAGE_SECRET_KEY: "production-object-storage-secret",
+        AI_INTAKE_AUDIO_ENABLED: "true",
+        AI_TRANSCRIPTION_PROVIDER: "fake",
       }),
     ).toThrow();
   });
