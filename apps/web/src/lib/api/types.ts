@@ -40,13 +40,33 @@ export interface CustomerSummaryOutput {
   warnings: string[];
 }
 
+export type DeviceOcrField = "brand" | "model" | "serialNumber" | "imei";
+
+export interface DeviceOcrCandidate {
+  value: string | null;
+  confidence: number;
+}
+
+export interface DeviceOcrOutput {
+  brand: DeviceOcrCandidate;
+  model: DeviceOcrCandidate;
+  serialNumber: DeviceOcrCandidate;
+  imei: DeviceOcrCandidate;
+  warnings: string[];
+}
+
+export interface AiCapabilityAvailability {
+  capability: AiCapability;
+  effectiveEnabled: boolean;
+}
+
 export interface AiRunView {
   id: string;
   capability: AiCapability;
   status: AiRunStatus;
   promptVersion: string;
   schemaVersion: string;
-  output: CustomerSummaryOutput | null;
+  output: CustomerSummaryOutput | DeviceOcrOutput | null;
   confidence: number | null;
   errorCode: string | null;
   review: {

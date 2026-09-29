@@ -17,6 +17,11 @@ import type { AiGateway, AiGatewayResult, AiGatewayUsage } from "./ai-gateway.js
 import { AI_RUN_REQUESTED_EVENT } from "./ai-outbox-repository.js";
 import type { AiPriceCalculator } from "./ai-price-calculator.js";
 import type { CircuitBreaker } from "./circuit-breaker.js";
+import {
+  DeviceOcrMediaError,
+  type DeviceOcrMediaLoader,
+  type LoadedDeviceOcrImage,
+} from "./capabilities/device-ocr/device-ocr-media-loader.js";
 
 export interface AiOutboxHandlerOptions {
   globalEnabled: boolean;
@@ -66,6 +71,7 @@ export class AiOutboxHandler {
     private readonly priceCalculator: AiPriceCalculator,
     private readonly circuitBreaker: CircuitBreaker,
     private readonly options: AiOutboxHandlerOptions,
+    private readonly deviceOcrMediaLoader?: DeviceOcrMediaLoader,
   ) {}
 
   async handle(event: ClaimedOutboxEvent, now: Date): Promise<void> {
@@ -79,27 +85,56 @@ export class AiOutboxHandler {
     if (prepared.kind === "DONE") return;
     const { run } = prepared;
     const sanitizedInput = redactAiInput(run.inputReference).value;
+    let providerInput = sanitizedInput;
+    let loadedImage: LoadedDeviceOcrImage | undefined;
+    if (run.capability === "DEVICE_OCR") {
+      const reference = parseDeviceOcrReference(run.inputReference);
+      if (!reference || !this.deviceOcrMediaLoader) {
+        await this.finalizeRun(run, now, failed("AI_MEDIA_UNAVAILABLE"));
+        return;
+      }
+      try {
+        loadedImage = await this.deviceOcrMediaLoader.load({
+          shopId: run.shopId,
+          mediaAssetId: reference.mediaAssetId,
+          repairOrderId: run.repairOrderId,
+          now,
+        });
+      } catch (error) {
+        const code = error instanceof DeviceOcrMediaError ? error.code : "AI_MEDIA_UNAVAILABLE";
+        await this.finalizeRun(run, now, failed(code));
+        return;
+      }
+      providerInput = { allowedFields: reference.allowedFields };
+    }
 
     let permit;
     try {
       permit = this.circuitBreaker.acquire();
     } catch (error) {
+      loadedImage?.dispose();
       await this.finalizeGatewayFailure(run, error, now);
       return;
     }
 
     let result: AiGatewayResult;
     try {
-      result = await this.gateway.generate({
-        capability: run.capability,
-        promptVersion: run.promptVersion,
-        schemaVersion: run.schemaVersion,
-        systemPrompt: run.definition.systemPrompt,
-        input: sanitizedInput,
-        outputSchema: run.definition.outputSchema,
-        timeoutMs: this.options.timeoutMs,
-        maxOutputBytes: this.options.maxOutputBytes,
-      });
+      try {
+        result = await this.gateway.generate({
+          capability: run.capability,
+          promptVersion: run.promptVersion,
+          schemaVersion: run.schemaVersion,
+          systemPrompt: run.definition.systemPrompt,
+          input: providerInput,
+          ...(loadedImage ? { images: [loadedImage.image] } : {}),
+          outputSchema: run.definition.outputSchema,
+          timeoutMs: this.options.timeoutMs,
+          maxOutputBytes: this.options.maxOutputBytes,
+        });
+      } finally {
+        loadedImage?.dispose();
+        loadedImage = undefined;
+      }
       permit.success();
     } catch (error) {
       if (shouldOpenCircuit(error)) permit.failure();
@@ -108,8 +143,11 @@ export class AiOutboxHandler {
       return;
     }
 
+    const normalizedOutput = run.definition.normalizeOutput
+      ? run.definition.normalizeOutput(result.output, providerInput)
+      : result.output;
     const cost = this.safeCost(result.provider, result.model, result.usage);
-    if (!cost || !run.definition.validateOutput(result.output, sanitizedInput)) {
+    if (!cost || !run.definition.validateOutput(normalizedOutput, providerInput)) {
       await this.finalizeRun(run, now, {
         status: "FAILED",
         errorCode: "AI_OUTPUT_INVALID",
@@ -125,7 +163,7 @@ export class AiOutboxHandler {
       return;
     }
 
-    const output = toJsonValue(result.output);
+    const output = toJsonValue(normalizedOutput);
     if (!output) {
       await this.finalizeRun(run, now, {
         status: "FAILED",
@@ -146,7 +184,7 @@ export class AiOutboxHandler {
       status: "SUCCEEDED",
       errorCode: null,
       output,
-      confidence: run.definition.confidence(result.output),
+      confidence: run.definition.confidence(normalizedOutput),
       provider: result.provider,
       model: result.model,
       usage: result.usage,
@@ -504,6 +542,25 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseDeviceOcrReference(
+  value: unknown,
+): { mediaAssetId: string; allowedFields: string[] } | null {
+  if (!isRecord(value) || !UUID_PATTERN.test(String(value.mediaAssetId))) return null;
+  if (
+    !Array.isArray(value.allowedFields) ||
+    value.allowedFields.length < 1 ||
+    !value.allowedFields.every((field) =>
+      ["brand", "model", "serialNumber", "imei"].includes(String(field)),
+    )
+  ) {
+    return null;
+  }
+  return {
+    mediaAssetId: String(value.mediaAssetId).toLowerCase(),
+    allowedFields: value.allowedFields.map(String),
+  };
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;

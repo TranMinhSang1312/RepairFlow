@@ -54,6 +54,9 @@ import type {
   CreateCustomerSummaryInput,
   CustomerSummaryOutput,
   AiReviewOutcome,
+  AiCapabilityAvailability,
+  DeviceOcrField,
+  DeviceOcrOutput,
 } from "./types";
 
 interface DataResponse<T> {
@@ -84,6 +87,22 @@ export interface IntakeApi {
     input: CreateRepairOrderInput,
     idempotencyKey: string,
   ): Promise<RepairOrderReceipt>;
+  listAiCapabilities?(shopId: string): Promise<AiCapabilityAvailability[]>;
+  createDeviceOcr?(
+    shopId: string,
+    input: { mediaAssetId: string; allowedFields?: DeviceOcrField[] },
+    idempotencyKey: string,
+  ): Promise<AiRunView>;
+  getAiRun?(shopId: string, aiRunId: string): Promise<AiRunView>;
+  reviewAiRun?(
+    shopId: string,
+    aiRunId: string,
+    input: {
+      outcome: AiReviewOutcome;
+      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput;
+      timeSavedSeconds?: number;
+    },
+  ): Promise<AiRunView>;
 }
 
 export interface RepairOrderReadApi {
@@ -672,6 +691,28 @@ export class BrowserIntakeApi
     return response.data;
   }
 
+  async listAiCapabilities(shopId: string): Promise<AiCapabilityAvailability[]> {
+    const response = await this.request<DataResponse<AiCapabilityAvailability[]>>(
+      "/ai/capabilities",
+      { shopId },
+    );
+    return response.data;
+  }
+
+  async createDeviceOcr(
+    shopId: string,
+    input: { mediaAssetId: string; allowedFields?: DeviceOcrField[] },
+    idempotencyKey: string,
+  ): Promise<AiRunView> {
+    const response = await this.request<DataResponse<AiRunView>>("/ai/device-ocr", {
+      method: "POST",
+      shopId,
+      idempotencyKey,
+      body: JSON.stringify(input),
+    });
+    return response.data;
+  }
+
   async getAiRun(shopId: string, aiRunId: string): Promise<AiRunView> {
     const response = await this.request<DataResponse<AiRunView>>(
       `/ai/runs/${encodeURIComponent(aiRunId)}`,
@@ -685,7 +726,7 @@ export class BrowserIntakeApi
     aiRunId: string,
     input: {
       outcome: AiReviewOutcome;
-      reviewedOutput?: CustomerSummaryOutput;
+      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput;
       timeSavedSeconds?: number;
     },
   ): Promise<AiRunView> {

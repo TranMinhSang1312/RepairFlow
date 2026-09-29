@@ -200,6 +200,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: 3.1135.0
+        version: 3.1135.0
       '@prisma/adapter-pg':
         specifier: 7.10.0
         version: 7.10.0

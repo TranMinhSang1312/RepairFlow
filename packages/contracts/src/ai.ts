@@ -9,6 +9,23 @@ export type AiCapabilityName = (typeof AI_CAPABILITIES)[number];
 
 export const CUSTOMER_SUMMARY_PROMPT_VERSION = "customer-summary-v1";
 export const CUSTOMER_SUMMARY_SCHEMA_VERSION = "1";
+export const DEVICE_OCR_PROMPT_VERSION = "device-ocr-v1";
+export const DEVICE_OCR_SCHEMA_VERSION = "1";
+export const DEVICE_OCR_FIELDS = ["brand", "model", "serialNumber", "imei"] as const;
+export type DeviceOcrField = (typeof DEVICE_OCR_FIELDS)[number];
+
+export interface DeviceOcrCandidate {
+  value: string | null;
+  confidence: number;
+}
+
+export interface DeviceOcrOutput {
+  brand: DeviceOcrCandidate;
+  model: DeviceOcrCandidate;
+  serialNumber: DeviceOcrCandidate;
+  imei: DeviceOcrCandidate;
+  warnings: string[];
+}
 export const CUSTOMER_SUMMARY_TONES = ["CLEAR_NEUTRAL"] as const;
 export type CustomerSummaryTone = (typeof CUSTOMER_SUMMARY_TONES)[number];
 
@@ -150,6 +167,48 @@ function validOcrField(value: unknown): boolean {
   );
 }
 
+const OCR_FIELD_LIMITS: Readonly<Record<DeviceOcrField, number>> = {
+  brand: 100,
+  model: 150,
+  serialNumber: 100,
+  imei: 15,
+};
+
+const HTML_FRAGMENT = /<\/?[a-z][^>]*>/iu;
+const PROMPT_FRAGMENT =
+  /(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?|system\s+prompt|developer\s+message)/iu;
+
+function validDeviceOcrField(field: DeviceOcrField, value: unknown): boolean {
+  if (!validOcrField(value) || !isRecord(value)) return false;
+  if (value.value === null) return true;
+  if (typeof value.value !== "string") return false;
+  if (
+    value.value.length < 1 ||
+    value.value.length > OCR_FIELD_LIMITS[field] ||
+    value.value !== value.value.normalize("NFKC").replace(/\s+/gu, " ").trim() ||
+    hasControlCharacter(value.value) ||
+    HTML_FRAGMENT.test(value.value) ||
+    PROMPT_FRAGMENT.test(value.value)
+  ) {
+    return false;
+  }
+  return field !== "imei" || isValidImei(value.value);
+}
+
+export function isValidImei(value: string): boolean {
+  if (!/^\d{15}$/u.test(value)) return false;
+  let sum = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    let digit = Number(value[index]);
+    if (index % 2 === 1) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+  }
+  return sum % 10 === 0;
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export function isValidAiOutput(capability: AiCapabilityName, value: unknown): boolean {
@@ -158,11 +217,18 @@ export function isValidAiOutput(capability: AiCapabilityName, value: unknown): b
     case "DEVICE_OCR":
       return (
         hasExactKeys(value, ["brand", "imei", "model", "serialNumber", "warnings"]) &&
-        validOcrField(value.brand) &&
-        validOcrField(value.model) &&
-        validOcrField(value.serialNumber) &&
-        validOcrField(value.imei) &&
-        boundedStringArray(value.warnings, 10, 300)
+        validDeviceOcrField("brand", value.brand) &&
+        validDeviceOcrField("model", value.model) &&
+        validDeviceOcrField("serialNumber", value.serialNumber) &&
+        validDeviceOcrField("imei", value.imei) &&
+        boundedStringArray(value.warnings, 10, 300) &&
+        value.warnings.every(
+          (warning) =>
+            warning === warning.normalize("NFKC").replace(/\s+/gu, " ").trim() &&
+            !hasControlCharacter(warning) &&
+            !HTML_FRAGMENT.test(warning) &&
+            !PROMPT_FRAGMENT.test(warning),
+        )
       );
     case "INTAKE_DRAFT":
       return (
@@ -206,6 +272,13 @@ export function isValidAiOutput(capability: AiCapabilityName, value: unknown): b
       return new Set(value.claimsUsed).size === value.claimsUsed.length;
     }
   }
+}
+
+function hasControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || (code >= 127 && code <= 159);
+  });
 }
 
 export function normalizedEditDistancePermille(original: unknown, reviewed: unknown): number {

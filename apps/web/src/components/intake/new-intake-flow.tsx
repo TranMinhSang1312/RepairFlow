@@ -22,6 +22,7 @@ import {
   type IntakeFieldErrors,
 } from "@/lib/intake/intake-form";
 import { useOptionalAuth } from "@/lib/auth/auth-provider";
+import { AiDeviceOcr } from "./ai-device-ocr";
 
 type Step = 1 | 2 | 3 | 4;
 type AsyncState = "idle" | "loading" | "success" | "error";
@@ -345,6 +346,26 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
         uploadedMediaIds: current.uploadedMediaIds.filter((id) => id !== item.mediaAssetId),
       }));
     }
+  }
+
+  function registerOcrMedia(file: File, mediaAssetId: string) {
+    setUploads((current) =>
+      current.some((item) => item.mediaAssetId === mediaAssetId)
+        ? current
+        : [
+            ...current,
+            {
+              localId: `ocr-${mediaAssetId}`,
+              file,
+              state: "complete",
+              mediaAssetId,
+            },
+          ],
+    );
+    setDraft((current) => ({
+      ...current,
+      uploadedMediaIds: [...new Set([...current.uploadedMediaIds, mediaAssetId])],
+    }));
   }
 
   function addAccessory() {
@@ -706,6 +727,14 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
             </button>
             {showDeviceForm ? (
               <form className="nested-form" onSubmit={createDevice}>
+                <AiDeviceOcr
+                  key={shopId}
+                  api={api}
+                  shopId={shopId}
+                  current={deviceForm}
+                  onMediaUploaded={registerOcrMedia}
+                  onApply={(values) => setDeviceForm((current) => ({ ...current, ...values }))}
+                />
                 <div className="form-grid">
                   <label className="field">
                     <span>Loại thiết bị *</span>

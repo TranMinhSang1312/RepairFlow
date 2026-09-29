@@ -6,6 +6,7 @@ import {
 } from "@repairflow/contracts";
 
 import { customerSummaryDefinition } from "./capabilities/customer-summary/customer-summary.js";
+import { deviceOcrDefinition } from "./capabilities/device-ocr/device-ocr.js";
 
 export const AI_PROMPT_VERSION = "spec-v0.1";
 export const AI_SCHEMA_VERSION = "1";
@@ -16,6 +17,7 @@ export interface AiCapabilityDefinition {
   schemaVersion: string;
   systemPrompt: string;
   outputSchema: JsonSchema;
+  normalizeOutput?(output: unknown, sanitizedInput: unknown): unknown;
   validateOutput(output: unknown, sanitizedInput: unknown): boolean;
   confidence(output: unknown): number | null;
 }
@@ -79,7 +81,7 @@ function defaultDefinitions(): AiCapabilityDefinition[] {
     validateOutput: (output, input) => validateCapabilityOutput(capability, output, input),
     confidence: capability === "DEVICE_OCR" ? ocrConfidence : () => null,
   }));
-  return [...foundation, customerSummaryDefinition];
+  return [...foundation, customerSummaryDefinition, deviceOcrDefinition];
 }
 
 function validateCapabilityOutput(

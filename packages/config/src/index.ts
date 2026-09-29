@@ -30,6 +30,7 @@ const apiEnvironmentSchema = z
     OBJECT_STORAGE_ACCESS_KEY: z.string().min(1).default("repairflow"),
     OBJECT_STORAGE_SECRET_KEY: z.string().min(8).default("local-development-only"),
     AI_ENABLED: environmentBoolean.default(false),
+    AI_MAX_IMAGE_BYTES: z.coerce.number().int().min(1).max(15_000_000).default(10_000_000),
   })
   .superRefine((environment, context) => {
     if (
@@ -94,6 +95,12 @@ const workerEnvironmentSchema = z
     AI_PROVIDER: z.enum(["fake", "deepseek"]).default("fake"),
     AI_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).default(15000),
     AI_MAX_OUTPUT_BYTES: z.coerce.number().int().min(1024).max(1048576).default(65536),
+    AI_MAX_IMAGE_BYTES: z.coerce.number().int().min(1).max(15_000_000).default(10_000_000),
+    OBJECT_STORAGE_ENDPOINT: z.string().url().default("http://localhost:9000"),
+    OBJECT_STORAGE_REGION: z.string().min(1).default("us-east-1"),
+    OBJECT_STORAGE_BUCKET: z.string().min(1).default("repairflow-private"),
+    OBJECT_STORAGE_ACCESS_KEY: z.string().min(1).default("repairflow"),
+    OBJECT_STORAGE_SECRET_KEY: z.string().min(8).default("local-development-only"),
     AI_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().min(1).max(100).default(5),
     AI_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce.number().int().min(1000).max(3600000).default(30000),
     AI_WORKER_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(2),
@@ -148,6 +155,17 @@ const workerEnvironmentSchema = z
         code: "custom",
         path: ["PUBLIC_TOKEN_SECRET"],
         message: "Production worker requires a dedicated public-token derivation secret.",
+      });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.AI_ENABLED &&
+      environment.OBJECT_STORAGE_SECRET_KEY === "local-development-only"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["OBJECT_STORAGE_SECRET_KEY"],
+        message: "Production worker requires a non-default object-storage secret.",
       });
     }
     if (environment.WORKER_NOTIFICATION_PROVIDER === "email") {

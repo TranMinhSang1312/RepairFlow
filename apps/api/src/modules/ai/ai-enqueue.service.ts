@@ -18,6 +18,8 @@ export interface EnqueueAiRunInput {
   schemaVersion: string;
   inputReference: Record<string, unknown>;
   buildInputReference?: (transaction: Prisma.TransactionClient) => Promise<Record<string, unknown>>;
+  /** Builder returned an explicit server-owned allowlist and must preserve opaque identifiers. */
+  serverOwnedInputReference?: boolean;
   upperBoundCostMicrousd: bigint;
   idempotencyKey: string | undefined;
 }
@@ -34,6 +36,9 @@ export class AiEnqueueService {
   ) {}
 
   enqueue(input: EnqueueAiRunInput): Promise<StoredAiRunResponse> {
+    if (input.serverOwnedInputReference && !input.buildInputReference) {
+      throw new Error("AI_SERVER_OWNED_INPUT_BUILDER_REQUIRED");
+    }
     if (!this.globalEnabled) {
       throw new ApiException(
         HttpStatus.CONFLICT,
@@ -60,10 +65,12 @@ export class AiEnqueueService {
       onReplay: async (transaction) => this.assertRepairOrderAccess(transaction, input),
       operation: async (transaction) => {
         await this.assertRepairOrderAccess(transaction, input);
+        const builtInputReference = input.buildInputReference
+          ? await input.buildInputReference(transaction)
+          : input.inputReference;
         const inputReference = this.safeJson(
-          input.buildInputReference
-            ? await input.buildInputReference(transaction)
-            : input.inputReference,
+          builtInputReference,
+          input.serverOwnedInputReference ?? false,
         );
         const settingLockKey = `ai-setting:${input.tenant.shopId}:${input.capability}`;
         await transaction.$queryRaw`
@@ -211,9 +218,12 @@ export class AiEnqueueService {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   }
 
-  private safeJson(value: Record<string, unknown>): Prisma.InputJsonObject {
-    const redacted = redactAiInput(value).value;
-    return JSON.parse(JSON.stringify(redacted)) as Prisma.InputJsonObject;
+  private safeJson(
+    value: Record<string, unknown>,
+    serverOwnedAllowlist: boolean,
+  ): Prisma.InputJsonObject {
+    const safe = serverOwnedAllowlist ? value : redactAiInput(value).value;
+    return JSON.parse(JSON.stringify(safe)) as Prisma.InputJsonObject;
   }
 
   private budgetExceeded(): ApiException {

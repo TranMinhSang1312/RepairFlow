@@ -160,6 +160,56 @@ describe("BrowserIntakeApi", () => {
     ).rejects.toMatchObject<Partial<RepairFlowApiError>>({ code: "MEDIA_UPLOAD_FAILED" });
   });
 
+  it("uses the staff capability, OCR enqueue and review contracts", async () => {
+    const run = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      capability: "DEVICE_OCR",
+      status: "QUEUED",
+      promptVersion: "device-ocr-v1",
+      schemaVersion: "1",
+      output: null,
+      confidence: null,
+      errorCode: null,
+      review: null,
+      createdAt: "2026-09-29T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(
+        jsonResponse({ data: [{ capability: "DEVICE_OCR", effectiveEnabled: true }] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: run }, 202))
+      .mockResolvedValueOnce(jsonResponse({ data: run }));
+    const api = new BrowserIntakeApi("/api/v1", fetcher);
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    await api.restoreSession();
+    await api.listAiCapabilities(shopId);
+    await api.createDeviceOcr(
+      shopId,
+      {
+        mediaAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        allowedFields: ["brand", "imei"],
+      },
+      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    );
+    await api.reviewAiRun(shopId, run.id, { outcome: "REJECTED" });
+
+    expect(String(fetcher.mock.calls[1]![0])).toBe("/api/v1/ai/capabilities");
+    expect(String(fetcher.mock.calls[2]![0])).toBe("/api/v1/ai/device-ocr");
+    const enqueueInit = fetcher.mock.calls[2]![1];
+    expect(new Headers(enqueueInit?.headers).get("Idempotency-Key")).toBe(
+      "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    );
+    expect(JSON.parse(String(enqueueInit?.body))).toEqual({
+      mediaAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      allowedFields: ["brand", "imei"],
+    });
+    expect(String(fetcher.mock.calls[3]![0])).toBe(`/api/v1/ai/runs/${run.id}/review`);
+  });
+
   it("rotates one refresh session when concurrent requests receive 401", async () => {
     let refreshCalls = 0;
     let customerCalls = 0;

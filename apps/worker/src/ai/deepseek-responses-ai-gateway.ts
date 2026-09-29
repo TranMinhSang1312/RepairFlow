@@ -106,6 +106,19 @@ function validateRequestLimits(request: AiGatewayRequest): void {
   if (!Number.isInteger(request.maxOutputBytes) || request.maxOutputBytes < 1) {
     throw new RangeError("AI max output bytes must be a positive integer");
   }
+  if ((request.images?.length ?? 0) > 1) {
+    throw new RangeError("AI image count exceeds the device OCR limit");
+  }
+  for (const image of request.images ?? []) {
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(image.mediaType) ||
+      image.base64Data.length < 1 ||
+      image.base64Data.length > 20_000_000 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/u.test(image.base64Data)
+    ) {
+      throw new RangeError("AI image input is invalid or too large");
+    }
+  }
 }
 
 function buildProviderRequest(model: string, request: AiGatewayRequest): Record<string, unknown> {
