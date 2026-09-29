@@ -1,6 +1,10 @@
 import { AiCapability, AiRunStatus, MembershipRole, MembershipStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { loadWorkspaceEnvironment } from "@repairflow/config/node";
+import {
+  CUSTOMER_SUMMARY_PROMPT_VERSION,
+  CUSTOMER_SUMMARY_SCHEMA_VERSION,
+} from "@repairflow/contracts";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -74,6 +78,8 @@ describe("AI outbox handler", () => {
     settingEnabled?: boolean;
     createUsage?: boolean;
     inputReference?: Record<string, unknown>;
+    promptVersion?: string;
+    schemaVersion?: string;
   }) {
     const suffix = randomUUID().slice(0, 8);
     const user = await prisma.user.create({
@@ -123,8 +129,8 @@ describe("AI outbox handler", () => {
         status: input?.status ?? AiRunStatus.QUEUED,
         provider: input?.status === AiRunStatus.RUNNING ? "fake" : null,
         model: input?.status === AiRunStatus.RUNNING ? "fake-v1" : null,
-        promptVersion: AI_PROMPT_VERSION,
-        schemaVersion: AI_SCHEMA_VERSION,
+        promptVersion: input?.promptVersion ?? AI_PROMPT_VERSION,
+        schemaVersion: input?.schemaVersion ?? AI_SCHEMA_VERSION,
         inputReference: (input?.inputReference ?? {
           approvedFacts: ["Pin đã chai"],
           customerEmail: "private-customer@example.test",
@@ -293,6 +299,36 @@ describe("AI outbox handler", () => {
       errorCode: "AI_OUTPUT_INVALID",
       output: null,
       estimatedCostMicrousd: 20n,
+    });
+  });
+
+  it("applies the RF-061 grounding and prohibited-claim validator before persisting output", async () => {
+    const facts = [
+      {
+        id: "diagnosis:one:finding",
+        kind: "DIAGNOSIS_FINDING",
+        text: "Pin bị phồng và máy tắt nguồn khi rút sạc.",
+      },
+    ];
+    const fixture = await createFixture({
+      promptVersion: CUSTOMER_SUMMARY_PROMPT_VERSION,
+      schemaVersion: CUSTOMER_SUMMARY_SCHEMA_VERSION,
+      inputReference: { tone: "CLEAR_NEUTRAL", maxCharacters: 400, facts },
+    });
+    const gateway = new ScriptedGateway(
+      successResult({
+        summary: "Giá sửa là 500.000 VND và chắc chắn hoàn tất ngày mai.",
+        claimsUsed: [facts[0]!.id],
+        warnings: [],
+      }),
+    );
+    await handler(gateway).handle(fixture.event, NOW);
+    await expect(
+      prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+    ).resolves.toMatchObject({
+      status: AiRunStatus.FAILED,
+      errorCode: "AI_OUTPUT_INVALID",
+      output: null,
     });
   });
 

@@ -29,6 +29,45 @@ export interface AuthData {
   user: CurrentUser;
 }
 
+export type AiCapability =
+  "DEVICE_OCR" | "INTAKE_DRAFT" | "CHECKLIST_SUGGESTION" | "CUSTOMER_SUMMARY";
+export type AiRunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "REJECTED";
+export type AiReviewOutcome = "ACCEPTED_UNCHANGED" | "ACCEPTED_EDITED" | "REJECTED";
+
+export interface CustomerSummaryOutput {
+  summary: string;
+  claimsUsed: string[];
+  warnings: string[];
+}
+
+export interface AiRunView {
+  id: string;
+  capability: AiCapability;
+  status: AiRunStatus;
+  promptVersion: string;
+  schemaVersion: string;
+  output: CustomerSummaryOutput | null;
+  confidence: number | null;
+  errorCode: string | null;
+  review: {
+    outcome: AiReviewOutcome;
+    reviewedAt: string;
+    editDistancePermille: number | null;
+    timeSavedSeconds: number | null;
+  } | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface CreateCustomerSummaryInput {
+  repairOrderId: string;
+  diagnosisId?: string;
+  workLogIds: string[];
+  tone: "CLEAR_NEUTRAL";
+  maxCharacters: number;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

@@ -5,6 +5,8 @@ import {
   type JsonSchema,
 } from "@repairflow/contracts";
 
+import { customerSummaryDefinition } from "./capabilities/customer-summary/customer-summary.js";
+
 export const AI_PROMPT_VERSION = "spec-v0.1";
 export const AI_SCHEMA_VERSION = "1";
 
@@ -66,7 +68,9 @@ export class AiCapabilityRegistry {
 }
 
 function defaultDefinitions(): AiCapabilityDefinition[] {
-  return (Object.keys(AI_OUTPUT_SCHEMAS) as AiCapabilityName[]).map((capability) => ({
+  const foundation: AiCapabilityDefinition[] = (
+    Object.keys(AI_OUTPUT_SCHEMAS) as AiCapabilityName[]
+  ).map((capability) => ({
     capability,
     promptVersion: AI_PROMPT_VERSION,
     schemaVersion: AI_SCHEMA_VERSION,
@@ -75,6 +79,7 @@ function defaultDefinitions(): AiCapabilityDefinition[] {
     validateOutput: (output, input) => validateCapabilityOutput(capability, output, input),
     confidence: capability === "DEVICE_OCR" ? ocrConfidence : () => null,
   }));
+  return [...foundation, customerSummaryDefinition];
 }
 
 function validateCapabilityOutput(

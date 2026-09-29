@@ -17,6 +17,7 @@ export interface EnqueueAiRunInput {
   promptVersion: string;
   schemaVersion: string;
   inputReference: Record<string, unknown>;
+  buildInputReference?: (transaction: Prisma.TransactionClient) => Promise<Record<string, unknown>>;
   upperBoundCostMicrousd: bigint;
   idempotencyKey: string | undefined;
 }
@@ -41,8 +42,6 @@ export class AiEnqueueService {
       );
     }
     if (input.upperBoundCostMicrousd <= 0n) throw this.budgetExceeded();
-    const redacted = redactAiInput(input.inputReference).value;
-    const inputReference = JSON.parse(JSON.stringify(redacted)) as Prisma.InputJsonObject;
     return this.idempotency.executeStored({
       tenant: input.tenant,
       scope: `ai.enqueue:${input.tenant.userId}:${input.capability}`,
@@ -52,11 +51,20 @@ export class AiEnqueueService {
         repairOrderId: input.repairOrderId ?? null,
         promptVersion: input.promptVersion,
         schemaVersion: input.schemaVersion,
-        inputReference,
+        // Idempotency persists only the digest of this request. Hash the exact source IDs so two
+        // distinct server-owned source selections cannot collapse after generic redaction.
+        inputReference: input.inputReference,
         upperBoundCostMicrousd: input.upperBoundCostMicrousd.toString(),
       },
       responseStatus: HttpStatus.ACCEPTED,
+      onReplay: async (transaction) => this.assertRepairOrderAccess(transaction, input),
       operation: async (transaction) => {
+        await this.assertRepairOrderAccess(transaction, input);
+        const inputReference = this.safeJson(
+          input.buildInputReference
+            ? await input.buildInputReference(transaction)
+            : input.inputReference,
+        );
         const settingLockKey = `ai-setting:${input.tenant.shopId}:${input.capability}`;
         await transaction.$queryRaw`
           SELECT pg_advisory_xact_lock(hashtextextended(${settingLockKey}, 0))::text AS locked
@@ -82,7 +90,6 @@ export class AiEnqueueService {
         ) {
           throw this.budgetExceeded();
         }
-        await this.assertRepairOrderAccess(transaction, input);
         const periodStart = this.periodStart(new Date());
         const lockKey = `ai-budget:${input.tenant.shopId}:${input.capability}:${periodStart.toISOString()}`;
         await transaction.$queryRaw`
@@ -202,6 +209,11 @@ export class AiEnqueueService {
 
   private periodStart(now: Date): Date {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  }
+
+  private safeJson(value: Record<string, unknown>): Prisma.InputJsonObject {
+    const redacted = redactAiInput(value).value;
+    return JSON.parse(JSON.stringify(redacted)) as Prisma.InputJsonObject;
   }
 
   private budgetExceeded(): ApiException {

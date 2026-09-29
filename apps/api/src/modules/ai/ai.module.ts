@@ -9,15 +9,20 @@ import { AiRunsService } from "./ai-runs.service.js";
 import { AiSettingsController } from "./ai-settings.controller.js";
 import { AiSettingsService } from "./ai-settings.service.js";
 import { AI_GLOBAL_ENABLED } from "./ai.tokens.js";
+import { CustomerSummaryController } from "./capabilities/customer-summary/customer-summary.controller.js";
+import { CustomerSummaryRepository } from "./capabilities/customer-summary/customer-summary.repository.js";
+import { CustomerSummaryService } from "./capabilities/customer-summary/customer-summary.service.js";
 
 @Module({
   imports: [IdempotencyModule],
-  controllers: [AiSettingsController, AiRunsController],
+  controllers: [AiSettingsController, AiRunsController, CustomerSummaryController],
   providers: [
     AiRepository,
     AiSettingsService,
     AiRunsService,
     AiEnqueueService,
+    CustomerSummaryRepository,
+    CustomerSummaryService,
     {
       provide: AI_GLOBAL_ENABLED,
       useFactory: () => parseApiEnvironment(process.env).AI_ENABLED,

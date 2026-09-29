@@ -62,7 +62,14 @@ function request(capability: AiCapabilityName): AiGatewayRequest {
     promptVersion: "v1",
     schemaVersion: "v1",
     systemPrompt: "Return JSON.",
-    input: { safe: true },
+    input:
+      capability === "CUSTOMER_SUMMARY"
+        ? {
+            tone: "CLEAR_NEUTRAL",
+            maxCharacters: 400,
+            facts: [{ id: "fact-1", kind: "WORK_LOG", text: "Thiết bị đã được vệ sinh." }],
+          }
+        : { safe: true },
     outputSchema: AI_OUTPUT_SCHEMAS[capability],
     timeoutMs: 1_000,
     maxOutputBytes: 65_536,

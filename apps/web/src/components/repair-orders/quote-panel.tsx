@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
-import type { RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
+import type { AiCustomerSummaryApi, RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type {
   CreateQuoteInput,
   Membership,
@@ -14,12 +14,24 @@ import type {
   RepairOrderDetail,
 } from "@/lib/api/types";
 
+import { AiCustomerSummary } from "./ai-customer-summary";
+
 interface QuotePanelProps {
-  api: RepairOrderWorkspaceApi;
+  api: RepairOrderWorkspaceApi & Partial<AiCustomerSummaryApi>;
   membership: Membership;
   order: RepairOrderDetail;
   shopId: string;
   onReload(): Promise<void>;
+}
+
+function hasCustomerSummaryApi(
+  api: RepairOrderWorkspaceApi & Partial<AiCustomerSummaryApi>,
+): api is RepairOrderWorkspaceApi & AiCustomerSummaryApi {
+  return (
+    typeof api.createCustomerSummary === "function" &&
+    typeof api.getAiRun === "function" &&
+    typeof api.reviewAiRun === "function"
+  );
 }
 
 interface EditableQuoteItem {
@@ -505,6 +517,22 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
 
   return (
     <section className="quote-layout" id="quote-panel" role="tabpanel">
+      {hasCustomerSummaryApi(api) && (
+        <AiCustomerSummary
+          api={api}
+          canInsert={canEdit}
+          onInsert={(summary) =>
+            updateForm((current) => ({
+              ...current,
+              customerNote: current.customerNote.trim()
+                ? `${current.customerNote.trim()}\n\n${summary}`
+                : summary,
+            }))
+          }
+          order={order}
+          shopId={shopId}
+        />
+      )}
       <article className="workspace-card quote-history">
         <header>
           <p className="eyebrow">Lịch sử bất biến</p>

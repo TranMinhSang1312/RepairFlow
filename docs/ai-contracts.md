@@ -1,6 +1,6 @@
 # RepairFlow AI Contracts
 
-Status: proposed specification for `spec-v0.1`
+Status: active specification for `spec-v0.1` and capability-specific prompt versions
 
 ## Purpose
 
@@ -145,19 +145,35 @@ Rewrite selected technical notes into concise customer-safe Vietnamese.
 
 ```json
 {
-  "technicalNotes": ["Đo pin còn 71% SOH", "Test sạc nhanh không ổn định"],
-  "approvedFacts": ["Pin đã chai", "Khuyến nghị thay pin"],
-  "tone": "clear-neutral",
-  "maxCharacters": 500
+  "tone": "CLEAR_NEUTRAL",
+  "maxCharacters": 400,
+  "facts": [
+    {
+      "id": "diagnosis-finding",
+      "kind": "DIAGNOSIS_FINDING",
+      "text": "Pin bị phồng và máy tắt nguồn khi rút sạc."
+    },
+    {
+      "id": "work-log-1",
+      "kind": "WORK_LOG",
+      "text": "Đã vệ sinh cổng sạc và kiểm tra nguồn."
+    }
+  ]
 }
 ```
+
+The API accepts only repair-order and source IDs. It verifies tenant ownership, current diagnosis,
+effective technical work logs and active technician assignment, then creates this redacted fact
+snapshot on the server. Prompt version `customer-summary-v1` rejects output that is not grounded in
+the claimed fact IDs or contains customer identifiers, credentials, prices, commitments, warranty
+promises, links or markup.
 
 ### Output schema
 
 ```json
 {
   "summary": "Kỹ thuật viên ghi nhận pin đã xuống cấp và quá trình sạc nhanh không ổn định. Cửa hàng đề xuất thay pin để tiếp tục kiểm tra.",
-  "claimsUsed": ["Pin đã chai", "Khuyến nghị thay pin"],
+  "claimsUsed": ["diagnosis-finding", "work-log-1"],
   "warnings": []
 }
 ```
@@ -175,4 +191,3 @@ For each capability, measure:
 - Staff-estimated time saved during the pilot.
 
 Do not store raw secrets or prohibited PII in analytics.
-

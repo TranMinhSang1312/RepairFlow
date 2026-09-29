@@ -997,6 +997,32 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {$ref: '#/components/responses/RateLimited'}
 
+  /api/v1/ai/customer-summaries:
+    post:
+      tags: [AI]
+      summary: Queue a customer-safe draft from server-owned repair facts
+      operationId: queueCustomerSummary
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateCustomerSummaryRequest'}
+      responses:
+        '202':
+          description: Customer-summary AI run queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
   /api/v1/ai/runs/{aiRunId}:
     get:
       tags: [AI]
@@ -2308,6 +2334,37 @@ components:
           type: object
           description: Required for accepted outcomes and discarded after server-side validation and edit-distance calculation.
         timeSavedSeconds: {type: integer, minimum: 0, maximum: 3600}
+    CreateCustomerSummaryRequest:
+      type: object
+      additionalProperties: false
+      required: [repairOrderId, workLogIds, tone, maxCharacters]
+      properties:
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        diagnosisId: {$ref: '#/components/schemas/Uuid'}
+        workLogIds:
+          type: array
+          uniqueItems: true
+          maxItems: 20
+          items: {$ref: '#/components/schemas/Uuid'}
+        tone: {type: string, enum: [CLEAR_NEUTRAL]}
+        maxCharacters: {type: integer, minimum: 100, maximum: 800}
+      description: At least one diagnosisId or workLogId is required. Source text and prompts are never accepted from the client.
+    CustomerSummaryOutput:
+      type: object
+      additionalProperties: false
+      required: [summary, claimsUsed, warnings]
+      properties:
+        summary: {type: string, minLength: 1, maxLength: 800}
+        claimsUsed:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          maxItems: 100
+          items: {type: string, minLength: 1, maxLength: 128}
+        warnings:
+          type: array
+          maxItems: 20
+          items: {type: string, maxLength: 500}
     AiRunResponse:
       type: object
       additionalProperties: false

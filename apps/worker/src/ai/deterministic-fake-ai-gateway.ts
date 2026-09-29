@@ -1,4 +1,3 @@
-import type { AiCapabilityName } from "@repairflow/contracts";
 import { AiGatewayError } from "./ai-errors.js";
 import type { AiGateway, AiGatewayRequest, AiGatewayResult } from "./ai-gateway.js";
 
@@ -62,7 +61,7 @@ export class DeterministicFakeAiGateway implements AiGateway {
     const output =
       scenario === "INVALID_OUTPUT"
         ? { intentionallyInvalid: true }
-        : (this.options.output ?? defaultOutput(request.capability));
+        : (this.options.output ?? defaultOutput(request));
 
     return Promise.resolve({
       provider: "fake",
@@ -81,8 +80,8 @@ export class DeterministicFakeAiGateway implements AiGateway {
   }
 }
 
-function defaultOutput(capability: AiCapabilityName): unknown {
-  switch (capability) {
+function defaultOutput(request: AiGatewayRequest): unknown {
+  switch (request.capability) {
     case "DEVICE_OCR":
       return {
         brand: { value: null, confidence: 0 },
@@ -102,10 +101,47 @@ function defaultOutput(capability: AiCapabilityName): unknown {
     case "CHECKLIST_SUGGESTION":
       return { suggestedItemIds: [], reasoningSummary: "", safetyWarnings: [] };
     case "CUSTOMER_SUMMARY":
-      return {
-        summary: "Bản nháp kỹ thuật cần được nhân viên kiểm tra.",
-        claimsUsed: [],
-        warnings: [],
-      };
+      return customerSummaryOutput(request.input);
   }
+}
+
+function customerSummaryOutput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {
+      summary: "Bản nháp kỹ thuật cần được nhân viên kiểm tra.",
+      claimsUsed: [],
+      warnings: [],
+    };
+  }
+  const facts = (input as { facts?: unknown }).facts;
+  const maxCharacters = (input as { maxCharacters?: unknown }).maxCharacters;
+  if (!Array.isArray(facts) || facts.length === 0) {
+    return {
+      summary: "Bản nháp kỹ thuật cần được nhân viên kiểm tra.",
+      claimsUsed: [],
+      warnings: [],
+    };
+  }
+  const first = facts[0];
+  if (!first || typeof first !== "object" || Array.isArray(first)) {
+    return {
+      summary: "Bản nháp kỹ thuật cần được nhân viên kiểm tra.",
+      claimsUsed: [],
+      warnings: [],
+    };
+  }
+  const fact = first as { id?: unknown; text?: unknown };
+  if (typeof fact.id !== "string" || typeof fact.text !== "string") {
+    return {
+      summary: "Bản nháp kỹ thuật cần được nhân viên kiểm tra.",
+      claimsUsed: [],
+      warnings: [],
+    };
+  }
+  const limit = typeof maxCharacters === "number" ? maxCharacters : 800;
+  return {
+    summary: fact.text.normalize("NFKC").slice(0, limit),
+    claimsUsed: [fact.id],
+    warnings: [],
+  };
 }
