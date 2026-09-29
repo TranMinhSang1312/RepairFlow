@@ -22,11 +22,18 @@ import {
   type DeviceOcrMediaLoader,
   type LoadedDeviceOcrImage,
 } from "./capabilities/device-ocr/device-ocr-media-loader.js";
+import {
+  IntakeAudioMediaError,
+  type IntakeAudioMediaLoader,
+} from "./capabilities/intake-draft/intake-audio-media-loader.js";
+import { sanitizeIntakeTranscript } from "./capabilities/intake-draft/intake-draft.js";
+import type { TranscriptionGateway } from "../transcription/transcription-gateway.js";
 
 export interface AiOutboxHandlerOptions {
   globalEnabled: boolean;
   timeoutMs: number;
   maxOutputBytes: number;
+  intakeAudioEnabled?: boolean;
 }
 
 interface PreparedAiRun {
@@ -72,6 +79,8 @@ export class AiOutboxHandler {
     private readonly circuitBreaker: CircuitBreaker,
     private readonly options: AiOutboxHandlerOptions,
     private readonly deviceOcrMediaLoader?: DeviceOcrMediaLoader,
+    private readonly intakeAudioMediaLoader?: IntakeAudioMediaLoader,
+    private readonly transcriptionGateway?: TranscriptionGateway,
   ) {}
 
   async handle(event: ClaimedOutboxEvent, now: Date): Promise<void> {
@@ -106,6 +115,84 @@ export class AiOutboxHandler {
         return;
       }
       providerInput = { allowedFields: reference.allowedFields };
+    } else if (run.capability === "INTAKE_DRAFT") {
+      const reference = parseIntakeDraftReference(run.inputReference);
+      if (!reference) {
+        await this.finalizeRun(run, now, failed("AI_OUTPUT_INVALID"));
+        return;
+      }
+      if (reference.sourceType === "AUDIO") {
+        if (
+          !this.options.intakeAudioEnabled ||
+          !this.intakeAudioMediaLoader ||
+          !this.transcriptionGateway
+        ) {
+          await this.finalizeRun(run, now, failed("AI_TRANSCRIPTION_UNAVAILABLE"));
+          return;
+        }
+        let loadedAudio;
+        try {
+          loadedAudio = await this.intakeAudioMediaLoader.load({
+            shopId: run.shopId,
+            mediaAssetId: reference.mediaAssetId,
+            now,
+          });
+        } catch (error) {
+          const code = error instanceof IntakeAudioMediaError ? error.code : "AI_MEDIA_UNAVAILABLE";
+          await this.finalizeRun(run, now, failed(code));
+          return;
+        }
+        let rawTranscript: string | null = null;
+        let cleanupFailed = false;
+        try {
+          const transcription = await this.transcriptionGateway.transcribe({
+            audio: loadedAudio.audio,
+            language: reference.language,
+            timeoutMs: this.options.timeoutMs,
+          });
+          rawTranscript = transcription.transcript;
+        } catch {
+          // Keep the sentinel value so the failure is mapped after secure cleanup.
+        } finally {
+          loadedAudio.dispose();
+          try {
+            await loadedAudio.cleanup();
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        if (cleanupFailed) {
+          await this.finalizeRun(run, now, failed("AI_MEDIA_UNAVAILABLE"));
+          return;
+        }
+        if (rawTranscript === null) {
+          await this.finalizeRun(run, now, failed("AI_TRANSCRIPTION_UNAVAILABLE"));
+          return;
+        }
+        const transcript = sanitizeIntakeTranscript(rawTranscript);
+        if (!transcript) {
+          await this.finalizeRun(run, now, failed("AI_INPUT_PROHIBITED"));
+          return;
+        }
+        providerInput = {
+          sourceType: "AUDIO",
+          transcript,
+          deviceType: reference.deviceType,
+          language: reference.language,
+        };
+      } else {
+        const transcript = sanitizeIntakeTranscript(reference.transcript);
+        if (!transcript) {
+          await this.finalizeRun(run, now, failed("AI_INPUT_PROHIBITED"));
+          return;
+        }
+        providerInput = {
+          sourceType: reference.sourceType,
+          transcript,
+          deviceType: reference.deviceType,
+          language: reference.language,
+        };
+      }
     }
 
     let permit;
@@ -561,6 +648,52 @@ function parseDeviceOcrReference(
     mediaAssetId: String(value.mediaAssetId).toLowerCase(),
     allowedFields: value.allowedFields.map(String),
   };
+}
+
+type IntakeDraftReference =
+  | {
+      sourceType: "TEXT" | "TRANSCRIPT";
+      transcript: string;
+      deviceType: "PHONE" | "LAPTOP" | "TABLET" | "OTHER";
+      language: "vi";
+    }
+  | {
+      sourceType: "AUDIO";
+      mediaAssetId: string;
+      deviceType: "PHONE" | "LAPTOP" | "TABLET" | "OTHER";
+      language: "vi";
+    };
+
+function parseIntakeDraftReference(value: unknown): IntakeDraftReference | null {
+  if (!isRecord(value)) return null;
+  const sourceType = value.sourceType;
+  const deviceType = value.deviceType;
+  const language = value.language;
+  if (!["PHONE", "LAPTOP", "TABLET", "OTHER"].includes(String(deviceType)) || language !== "vi") {
+    return null;
+  }
+  if (sourceType === "AUDIO") {
+    return UUID_PATTERN.test(String(value.mediaAssetId))
+      ? {
+          sourceType,
+          mediaAssetId: String(value.mediaAssetId).toLowerCase(),
+          deviceType: deviceType as IntakeDraftReference["deviceType"],
+          language,
+        }
+      : null;
+  }
+  if (
+    (sourceType === "TEXT" || sourceType === "TRANSCRIPT") &&
+    typeof value.transcript === "string"
+  ) {
+    return {
+      sourceType,
+      transcript: value.transcript,
+      deviceType: deviceType as IntakeDraftReference["deviceType"],
+      language,
+    };
+  }
+  return null;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;

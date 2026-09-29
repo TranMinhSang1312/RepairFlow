@@ -761,4 +761,49 @@ describe("BrowserIntakeApi", () => {
       "notification-retry-key",
     );
   });
+
+  it("maps RF-063 intake draft and private audio upload contracts", async () => {
+    const shopId = authBody.data.user.memberships[0]!.shopId;
+    const run = {
+      id: "77777777-7777-4777-8777-777777777777",
+      capability: "INTAKE_DRAFT",
+      status: "QUEUED",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(authBody))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            mediaAssetId: "88888888-8888-4888-8888-888888888888",
+            uploadUrl: "https://storage.test/intake-audio",
+            expiresAt: "2026-09-29T01:00:00.000Z",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ data: run }, 202));
+    const client = new BrowserIntakeApi("/api/v1", fetcher);
+    await client.restoreSession();
+    await client.uploadIntakeAudio(
+      shopId,
+      new File(["audio"], "intake.wav", { type: "audio/wav" }),
+    );
+    await client.createIntakeDraft(
+      shopId,
+      { source: { type: "TEXT", text: "Máy tự tắt nguồn" }, deviceType: "PHONE", language: "vi" },
+      "intake-draft-key",
+    );
+
+    expect(String(fetcher.mock.calls[1]![0])).toBe("/api/v1/media/presign");
+    expect(JSON.parse(String(fetcher.mock.calls[1]![1]?.body))).toMatchObject({
+      purpose: "AI_INTAKE_AUDIO",
+      mimeType: "audio/wav",
+    });
+    expect(String(fetcher.mock.calls[2]![0])).toBe("https://storage.test/intake-audio");
+    expect(String(fetcher.mock.calls[3]![0])).toBe("/api/v1/ai/intake-drafts");
+    expect(new Headers(fetcher.mock.calls[3]![1]?.headers).get("Idempotency-Key")).toBe(
+      "intake-draft-key",
+    );
+  });
 });

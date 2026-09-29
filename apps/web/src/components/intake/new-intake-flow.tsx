@@ -23,6 +23,7 @@ import {
 } from "@/lib/intake/intake-form";
 import { useOptionalAuth } from "@/lib/auth/auth-provider";
 import { AiDeviceOcr } from "./ai-device-ocr";
+import { AiIntakeDraft } from "./ai-intake-draft";
 
 type Step = 1 | 2 | 3 | 4;
 type AsyncState = "idle" | "loading" | "success" | "error";
@@ -835,6 +836,29 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
                 <p>Thông tin này xuất hiện trong hồ sơ để đối chiếu về sau.</p>
               </div>
             </div>
+            <AiIntakeDraft
+              key={`intake-draft-${shopId}`}
+              api={api}
+              shopId={shopId}
+              deviceType={draft.device?.type ?? "OTHER"}
+              current={{
+                reportedProblem: draft.reportedProblem,
+                intakeCondition: draft.intakeCondition,
+                accessories: draft.accessories,
+              }}
+              onApply={(values) =>
+                setDraft((current) => ({
+                  ...current,
+                  ...(values.reportedProblem !== undefined
+                    ? { reportedProblem: values.reportedProblem }
+                    : {}),
+                  ...(values.intakeCondition !== undefined
+                    ? { intakeCondition: values.intakeCondition }
+                    : {}),
+                  ...(values.accessories !== undefined ? { accessories: values.accessories } : {}),
+                }))
+              }
+            />
             <div className="form-grid">
               <label className="field full-width">
                 <span>Chi nhánh tiếp nhận *</span>

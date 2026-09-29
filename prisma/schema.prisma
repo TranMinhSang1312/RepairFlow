@@ -73,6 +73,7 @@ enum Priority {
 
 enum MediaPurpose {
   INTAKE
+  AI_INTAKE_AUDIO
   DIAGNOSIS
   REPAIR
   QC

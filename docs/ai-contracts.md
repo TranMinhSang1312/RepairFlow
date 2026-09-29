@@ -106,6 +106,19 @@ Turn staff text or transcribed audio into a structured intake draft.
 
 The model must not turn customer claims into verified facts. Staff reviews every field before intake submission.
 
+Prompt version is `intake-draft-v1` and schema version is `1`. `TEXT` and staff-pasted
+`TRANSCRIPT` inputs are Unicode-normalized, bounded and redacted before the private input snapshot
+is persisted. Credentials, tokens and prompt-injection text fail with `AI_INPUT_PROHIBITED`.
+Phone numbers and email addresses are replaced before persistence and provider delivery.
+
+`AUDIO` references a short-lived private `AI_INTAKE_AUDIO` media asset. The worker repeats tenant,
+purpose, expiry, MIME, size, checksum and duration checks, transcribes through the provider-neutral
+`TranscriptionGateway`, disposes the bytes, redacts the transcript and only then calls `AiGateway`.
+Raw audio, transcription-provider bodies and the intermediate transcript are not stored in the run,
+outbox or logs. The worker deletes the short-lived audio object and provisional media row after the
+transcription attempt. RF-063 ships only a deterministic fake transcription adapter, so production audio
+remains disabled until an audited speech provider and retention decision are added.
+
 ## Capability: `CHECKLIST_SUGGESTION`
 
 ### Purpose

@@ -1,4 +1,4 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import type { PrivateObjectReadResult, PrivateObjectReader } from "./device-ocr-media-loader.js";
 
@@ -49,5 +49,11 @@ export class S3PrivateObjectReader implements PrivateObjectReader {
       byteSize: response.ContentLength ?? size,
       mimeType: response.ContentType ?? null,
     };
+  }
+
+  async delete(objectKey: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.options.bucket, Key: objectKey }),
+    );
   }
 }

@@ -3823,6 +3823,96 @@ textarea:focus-visible,
   flex-wrap: wrap;
 }
 
+.ai-intake-draft {
+  margin: 0 0 1.5rem;
+  padding: 1rem;
+  border: 1px solid #b9d4c3;
+  border-radius: 14px;
+  background: #f4faf6;
+}
+
+.ai-intake-source-tabs,
+.ai-intake-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 0.8rem 0;
+}
+
+.ai-intake-source-tabs button {
+  border: 1px solid #9db9a8;
+  border-radius: 999px;
+  padding: 0.5rem 0.8rem;
+  background: white;
+  color: #173d2b;
+}
+
+.ai-intake-source-tabs button[aria-pressed="true"] {
+  background: #174f36;
+  color: white;
+}
+
+.ai-intake-source-tabs button:disabled {
+  opacity: 0.6;
+}
+
+.ai-intake-comparison {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.ai-intake-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.8rem;
+  border: 1px solid #d5e4da;
+  border-radius: 10px;
+  background: white;
+}
+
+.ai-intake-field span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.ai-intake-edit {
+  display: grid;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+
+.ai-intake-edit textarea {
+  min-width: 0;
+  resize: vertical;
+  font-weight: 400;
+}
+
+.ai-intake-comparison section {
+  padding: 0.8rem;
+  border-radius: 10px;
+  background: #fff;
+}
+
+@media (max-width: 360px) {
+  .ai-intake-draft {
+    padding: 0.75rem;
+  }
+
+  .ai-intake-source-tabs,
+  .ai-intake-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ai-intake-source-tabs button,
+  .ai-intake-actions button {
+    width: 100%;
+  }
+}
+
 @media (max-width: 800px) {
   .quote-layout,
   .public-order-summary {
