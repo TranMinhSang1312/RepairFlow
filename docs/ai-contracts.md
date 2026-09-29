@@ -72,7 +72,9 @@ Extract candidate identity fields from an authorized photo of a device label or 
 }
 ```
 
-All fields are nullable. IMEI must remain text and pass syntax validation. Staff must compare the image and confirm each accepted field.
+Prompt version is `device-ocr-v1` and schema version is `1`. Non-requested or uncertain fields are returned as `null`; IMEI remains text, contains exactly 15 decimal digits and passes Luhn. The API verifies the tenant, role, media state and private-object metadata before enqueue. The worker repeats those checks, downloads the object with server credentials, strips image metadata and sends one bounded in-memory image to the gateway. The media ID, object key, signed URL, image bytes, provider body and credentials never enter the provider text input, log, outbox or stored output.
+
+Staff capability availability is read through `GET /api/v1/ai/capabilities`, which returns effective flags only and does not expose owner-only budgets. Staff compare the image and current form value, select each accepted field explicitly and apply it only to local form state. Review telemetry is recorded once; device persistence still uses the existing human-submitted device API.
 
 ## Capability: `INTAKE_DRAFT`
 

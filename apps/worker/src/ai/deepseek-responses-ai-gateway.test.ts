@@ -180,6 +180,27 @@ describe("DeepSeekResponsesAiGateway", () => {
     });
   });
 
+  it("rejects unbounded or malformed image input before the provider request", async () => {
+    const fetchImplementation = vi.fn() as unknown as typeof fetch;
+    const gateway = createGateway(fetchImplementation);
+    await expect(
+      gateway.generate({
+        ...request(),
+        images: [{ mediaType: "image/png", base64Data: "not base64***" }],
+      }),
+    ).rejects.toThrow("image input");
+    await expect(
+      gateway.generate({
+        ...request(),
+        images: [
+          { mediaType: "image/png", base64Data: "YQ==" },
+          { mediaType: "image/jpeg", base64Data: "Yg==" },
+        ],
+      }),
+    ).rejects.toThrow("image count");
+    expect(fetchImplementation).not.toHaveBeenCalled();
+  });
+
   it("maps network errors to a sanitized unknown-outcome error", async () => {
     const fetchImplementation = vi.fn(async () => {
       throw new Error(`socket failed ${API_KEY_CANARY}`);

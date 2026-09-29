@@ -4,9 +4,11 @@ import { loadWorkspaceEnvironment } from "@repairflow/config/node";
 import {
   CUSTOMER_SUMMARY_PROMPT_VERSION,
   CUSTOMER_SUMMARY_SCHEMA_VERSION,
+  DEVICE_OCR_PROMPT_VERSION,
+  DEVICE_OCR_SCHEMA_VERSION,
 } from "@repairflow/contracts";
 import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createPrismaClient } from "../database.js";
 import type { ClaimedOutboxEvent } from "../outbox/outbox.types.js";
@@ -21,6 +23,10 @@ import { AiOutboxHandler } from "./ai-outbox-handler.js";
 import { AI_RUN_REQUESTED_EVENT } from "./ai-outbox-repository.js";
 import { AiPriceCalculator } from "./ai-price-calculator.js";
 import { CircuitBreaker } from "./circuit-breaker.js";
+import {
+  DeviceOcrMediaError,
+  type DeviceOcrMediaLoader,
+} from "./capabilities/device-ocr/device-ocr-media-loader.js";
 
 loadWorkspaceEnvironment();
 
@@ -80,7 +86,9 @@ describe("AI outbox handler", () => {
     inputReference?: Record<string, unknown>;
     promptVersion?: string;
     schemaVersion?: string;
+    capability?: AiCapability;
   }) {
+    const capability = input?.capability ?? AiCapability.CUSTOMER_SUMMARY;
     const suffix = randomUUID().slice(0, 8);
     const user = await prisma.user.create({
       data: {
@@ -97,7 +105,7 @@ describe("AI outbox handler", () => {
     await prisma.aiCapabilitySetting.create({
       data: {
         shopId: shop.id,
-        capability: AiCapability.CUSTOMER_SUMMARY,
+        capability,
         enabled: input?.settingEnabled ?? true,
         monthlyBudgetMicrousd: 1_000n,
         maxRunCostMicrousd: 100n,
@@ -116,7 +124,7 @@ describe("AI outbox handler", () => {
       await prisma.aiUsagePeriod.create({
         data: {
           shopId: shop.id,
-          capability: AiCapability.CUSTOMER_SUMMARY,
+          capability,
           periodStart: PERIOD_START,
           reservedMicrousd: 100n,
         },
@@ -125,7 +133,7 @@ describe("AI outbox handler", () => {
     const run = await prisma.aiRun.create({
       data: {
         shopId: shop.id,
-        capability: AiCapability.CUSTOMER_SUMMARY,
+        capability,
         status: input?.status ?? AiRunStatus.QUEUED,
         provider: input?.status === AiRunStatus.RUNNING ? "fake" : null,
         model: input?.status === AiRunStatus.RUNNING ? "fake-v1" : null,
@@ -151,7 +159,7 @@ describe("AI outbox handler", () => {
           schemaVersion: 1,
           aiRunId: run.id,
           shopId: shop.id,
-          capability: AiCapability.CUSTOMER_SUMMARY,
+          capability,
         },
       },
     });
@@ -176,7 +184,11 @@ describe("AI outbox handler", () => {
     };
   }
 
-  function handler(gateway: AiGateway, globalEnabled = true) {
+  function handler(
+    gateway: AiGateway,
+    globalEnabled = true,
+    deviceOcrMediaLoader?: DeviceOcrMediaLoader,
+  ) {
     return new AiOutboxHandler(
       prisma,
       gateway,
@@ -190,6 +202,7 @@ describe("AI outbox handler", () => {
       }),
       new CircuitBreaker({ provider: "fake", failureThreshold: 2, cooldownMs: 30_000 }),
       { globalEnabled, timeoutMs: 1_000, maxOutputBytes: 4_096 },
+      deviceOcrMediaLoader,
     );
   }
 
@@ -225,6 +238,128 @@ describe("AI outbox handler", () => {
         },
       }),
     ).resolves.toMatchObject({ reservedMicrousd: 0n, spentMicrousd: 20n });
+  });
+
+  it("loads an authorized OCR image only in the worker and stores normalized output without media secrets", async () => {
+    const fixture = await createFixture({
+      capability: AiCapability.DEVICE_OCR,
+      promptVersion: DEVICE_OCR_PROMPT_VERSION,
+      schemaVersion: DEVICE_OCR_SCHEMA_VERSION,
+      inputReference: {
+        mediaAssetId: "22222222-2222-4222-8222-222222222222",
+        allowedFields: ["brand", "imei"],
+        media: { mimeType: "image/jpeg", byteSize: 12 },
+      },
+    });
+    const dispose = vi.fn();
+    const loader = {
+      load: vi.fn().mockResolvedValue({
+        image: { mediaType: "image/jpeg", base64Data: "Y2FuYXJ5LWltYWdlLWJ5dGVz" },
+        dispose,
+      }),
+    } as unknown as DeviceOcrMediaLoader;
+    const gateway = new ScriptedGateway(
+      successResult({
+        brand: { value: "  Apple  ", confidence: 0.9 },
+        model: { value: "must be nulled", confidence: 0.7 },
+        serialNumber: { value: null, confidence: 0.3 },
+        imei: { value: "490154203237518", confidence: 0.95 },
+        warnings: ["  Verify on device  "],
+      }),
+    );
+    await handler(gateway, true, loader).handle(fixture.event, NOW);
+    expect(loader.load).toHaveBeenCalledWith({
+      shopId: fixture.run.shopId,
+      mediaAssetId: "22222222-2222-4222-8222-222222222222",
+      repairOrderId: null,
+      now: NOW,
+    });
+    expect(gateway.requests).toHaveLength(1);
+    expect(gateway.requests[0]).toMatchObject({
+      input: { allowedFields: ["brand", "imei"] },
+      images: [{ mediaType: "image/jpeg", base64Data: "Y2FuYXJ5LWltYWdlLWJ5dGVz" }],
+    });
+    expect(JSON.stringify(gateway.requests[0]!.input)).not.toContain("22222222");
+    expect(dispose).toHaveBeenCalledOnce();
+    const run = await prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } });
+    expect(run).toMatchObject({
+      status: AiRunStatus.SUCCEEDED,
+      output: {
+        brand: { value: "Apple", confidence: 0.9 },
+        model: { value: null, confidence: 0 },
+        serialNumber: { value: null, confidence: 0 },
+        imei: { value: "490154203237518", confidence: 0.95 },
+        warnings: ["Verify on device"],
+      },
+    });
+    const persisted = JSON.stringify({ run, event: fixture.event }, (_key, value: unknown) =>
+      typeof value === "bigint" ? value.toString() : value,
+    );
+    expect(persisted).not.toContain("Y2FuYXJ5LWltYWdlLWJ5dGVz");
+    expect(persisted).not.toContain("private/object-key");
+  });
+
+  it.each(["AI_AUTHORIZATION_REVOKED", "AI_MEDIA_UNAVAILABLE"] as const)(
+    "does not call the provider when OCR preparation fails with %s",
+    async (errorCode) => {
+      const fixture = await createFixture({
+        capability: AiCapability.DEVICE_OCR,
+        promptVersion: DEVICE_OCR_PROMPT_VERSION,
+        schemaVersion: DEVICE_OCR_SCHEMA_VERSION,
+        inputReference: {
+          mediaAssetId: "22222222-2222-4222-8222-222222222222",
+          allowedFields: ["brand"],
+        },
+      });
+      const loader = {
+        load: vi.fn().mockRejectedValue(new DeviceOcrMediaError(errorCode)),
+      } as unknown as DeviceOcrMediaLoader;
+      const gateway = new ScriptedGateway(successResult());
+      await handler(gateway, true, loader).handle(fixture.event, NOW);
+      expect(gateway.requests).toHaveLength(0);
+      await expect(
+        prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+      ).resolves.toMatchObject({
+        status: AiRunStatus.FAILED,
+        errorCode,
+        estimatedCostMicrousd: 0n,
+      });
+    },
+  );
+
+  it("fails the whole OCR run when IMEI validation fails", async () => {
+    const fixture = await createFixture({
+      capability: AiCapability.DEVICE_OCR,
+      promptVersion: DEVICE_OCR_PROMPT_VERSION,
+      schemaVersion: DEVICE_OCR_SCHEMA_VERSION,
+      inputReference: {
+        mediaAssetId: "22222222-2222-4222-8222-222222222222",
+        allowedFields: ["imei"],
+      },
+    });
+    const loader = {
+      load: vi.fn().mockResolvedValue({
+        image: { mediaType: "image/jpeg", base64Data: "Y2FuYXJ5" },
+        dispose: vi.fn(),
+      }),
+    } as unknown as DeviceOcrMediaLoader;
+    const gateway = new ScriptedGateway(
+      successResult({
+        brand: { value: null, confidence: 0 },
+        model: { value: null, confidence: 0 },
+        serialNumber: { value: null, confidence: 0 },
+        imei: { value: "490154203237519", confidence: 0.99 },
+        warnings: [],
+      }),
+    );
+    await handler(gateway, true, loader).handle(fixture.event, NOW);
+    await expect(
+      prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+    ).resolves.toMatchObject({
+      status: AiRunStatus.FAILED,
+      errorCode: "AI_OUTPUT_INVALID",
+      output: null,
+    });
   });
 
   it("persists an unavailable provider as a terminal run and returns normally", async () => {

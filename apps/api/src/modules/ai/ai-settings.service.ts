@@ -30,6 +30,17 @@ export class AiSettingsService {
     };
   }
 
+  async availability(tenant: TenantContext) {
+    const records = await this.repository.listSettings(tenant.shopId);
+    const enabled = new Map(records.map((record) => [record.capability, record.enabled]));
+    return {
+      data: Object.values(AiCapability).map((capability) => ({
+        capability,
+        effectiveEnabled: this.globalEnabled && (enabled.get(capability) ?? false),
+      })),
+    };
+  }
+
   async update(
     tenant: TenantContext,
     rawCapability: string,

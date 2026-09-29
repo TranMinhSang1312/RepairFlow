@@ -979,23 +979,42 @@ paths:
       operationId: queueDeviceOcr
       parameters:
         - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [mediaAssetId]
-              properties:
-                mediaAssetId: {$ref: '#/components/schemas/Uuid'}
+            schema: {$ref: '#/components/schemas/CreateDeviceOcrRequest'}
       responses:
         '202':
           description: AI run queued
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
         '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+
+  /api/v1/ai/capabilities:
+    get:
+      tags: [AI]
+      summary: List effective AI capability availability for staff UI
+      operationId: listAiCapabilityAvailability
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+      responses:
+        '200':
+          description: Effective flags without budgets or owner-only settings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiCapabilityAvailabilityResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
 
   /api/v1/ai/customer-summaries:
     post:
@@ -2283,6 +2302,20 @@ components:
     AiCapability:
       type: string
       enum: [DEVICE_OCR, INTAKE_DRAFT, CHECKLIST_SUGGESTION, CUSTOMER_SUMMARY]
+    AiCapabilityAvailabilityResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [capability, effectiveEnabled]
+            properties:
+              capability: {$ref: '#/components/schemas/AiCapability'}
+              effectiveEnabled: {type: boolean}
     AiReviewOutcome:
       type: string
       enum: [ACCEPTED_UNCHANGED, ACCEPTED_EDITED, REJECTED]
@@ -2349,6 +2382,39 @@ components:
         tone: {type: string, enum: [CLEAR_NEUTRAL]}
         maxCharacters: {type: integer, minimum: 100, maximum: 800}
       description: At least one diagnosisId or workLogId is required. Source text and prompts are never accepted from the client.
+    CreateDeviceOcrRequest:
+      type: object
+      additionalProperties: false
+      required: [mediaAssetId]
+      properties:
+        mediaAssetId: {$ref: '#/components/schemas/Uuid'}
+        allowedFields:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items: {type: string, enum: [brand, model, serialNumber, imei]}
+      description: The server and worker resolve the private object. Image bytes, object keys and URLs are never accepted from the client.
+    DeviceOcrCandidate:
+      type: object
+      additionalProperties: false
+      required: [value, confidence]
+      properties:
+        value: {type: [string, 'null']}
+        confidence: {type: number, minimum: 0, maximum: 1}
+    DeviceOcrOutput:
+      type: object
+      additionalProperties: false
+      required: [brand, model, serialNumber, imei, warnings]
+      properties:
+        brand: {$ref: '#/components/schemas/DeviceOcrCandidate'}
+        model: {$ref: '#/components/schemas/DeviceOcrCandidate'}
+        serialNumber: {$ref: '#/components/schemas/DeviceOcrCandidate'}
+        imei: {$ref: '#/components/schemas/DeviceOcrCandidate'}
+        warnings:
+          type: array
+          maxItems: 10
+          items: {type: string, maxLength: 300}
     CustomerSummaryOutput:
       type: object
       additionalProperties: false

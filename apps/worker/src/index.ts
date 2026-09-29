@@ -11,6 +11,8 @@ import { AiOutboxHandler } from "./ai/ai-outbox-handler.js";
 import { AiOutboxRepository } from "./ai/ai-outbox-repository.js";
 import { AiPriceCalculator } from "./ai/ai-price-calculator.js";
 import { CircuitBreaker } from "./ai/circuit-breaker.js";
+import { DeviceOcrMediaLoader } from "./ai/capabilities/device-ocr/device-ocr-media-loader.js";
+import { S3PrivateObjectReader } from "./ai/capabilities/device-ocr/s3-private-object-reader.js";
 import { createPrismaClient } from "./database.js";
 import { CompositeOutboxProcessor } from "./outbox/composite-outbox-processor.js";
 import { DatabaseNotificationMessageResolver } from "./outbox/notification-message-resolver.js";
@@ -42,6 +44,9 @@ const logger = pino({
       "reviewedOutput",
       "prompt",
       "providerBody",
+      "images",
+      "base64Data",
+      "objectKey",
       "req.headers.authorization",
     ],
     censor: "[REDACTED]",
@@ -132,6 +137,17 @@ const aiHandler = new AiOutboxHandler(
     timeoutMs: environment.AI_TIMEOUT_MS,
     maxOutputBytes: environment.AI_MAX_OUTPUT_BYTES,
   },
+  new DeviceOcrMediaLoader(
+    prisma,
+    new S3PrivateObjectReader({
+      endpoint: environment.OBJECT_STORAGE_ENDPOINT,
+      region: environment.OBJECT_STORAGE_REGION,
+      bucket: environment.OBJECT_STORAGE_BUCKET,
+      accessKeyId: environment.OBJECT_STORAGE_ACCESS_KEY,
+      secretAccessKey: environment.OBJECT_STORAGE_SECRET_KEY,
+    }),
+    environment.AI_MAX_IMAGE_BYTES,
+  ),
 );
 const aiProcessor = new OutboxProcessor(aiRepository, aiHandler, logger, `${workerId}:ai`, {
   eventTypes: [],
