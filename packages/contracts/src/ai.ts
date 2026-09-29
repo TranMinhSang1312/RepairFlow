@@ -7,6 +7,23 @@ export const AI_CAPABILITIES = [
 
 export type AiCapabilityName = (typeof AI_CAPABILITIES)[number];
 
+export const CUSTOMER_SUMMARY_PROMPT_VERSION = "customer-summary-v1";
+export const CUSTOMER_SUMMARY_SCHEMA_VERSION = "1";
+export const CUSTOMER_SUMMARY_TONES = ["CLEAR_NEUTRAL"] as const;
+export type CustomerSummaryTone = (typeof CUSTOMER_SUMMARY_TONES)[number];
+
+export interface CustomerSummaryFact {
+  id: string;
+  kind: "DIAGNOSIS_FINDING" | "DIAGNOSIS_RECOMMENDATION" | "WORK_LOG";
+  text: string;
+}
+
+export interface CustomerSummaryInput {
+  tone: CustomerSummaryTone;
+  maxCharacters: number;
+  facts: CustomerSummaryFact[];
+}
+
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
 const nullableFieldSchema = {

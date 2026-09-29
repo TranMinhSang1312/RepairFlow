@@ -479,6 +479,59 @@ describe("QuotePanel", () => {
     expect(createQuote).not.toHaveBeenCalled();
   });
 
+  it("appends an accepted AI draft without replacing a manually written customer note", async () => {
+    const sourceOrder = detail();
+    sourceOrder.diagnoses = [
+      {
+        id: "99999999-9999-4999-8999-999999999999",
+        repairOrderId: orderId,
+        revisionNo: 1,
+        finding: "Pin bị phồng",
+        recommendation: "Kiểm tra nguồn",
+        supersedesId: null,
+        createdByUserId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        createdAt: "2026-09-28T00:00:00.000Z",
+      },
+    ];
+    const aiOutput = {
+      summary: "Pin có dấu hiệu phồng và cần được kiểm tra nguồn.",
+      claimsUsed: ["diagnosis-finding"],
+      warnings: [],
+    };
+    const run = {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      capability: "CUSTOMER_SUMMARY",
+      status: "SUCCEEDED",
+      promptVersion: "customer-summary-v1",
+      schemaVersion: "1",
+      output: aiOutput,
+      confidence: null,
+      errorCode: null,
+      review: null,
+      createdAt: "2026-09-28T00:00:00.000Z",
+      startedAt: "2026-09-28T00:00:00.100Z",
+      completedAt: "2026-09-28T00:00:00.200Z",
+    };
+    const reviewAiRun = vi.fn().mockResolvedValue(run);
+    setup({
+      api: fakeApi({
+        createCustomerSummary: vi.fn().mockResolvedValue(run),
+        getAiRun: vi.fn(),
+        reviewAiRun,
+      }),
+      order: sourceOrder,
+    });
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Ghi chú gửi khách"), "Nội dung nhân viên đã soạn");
+    await user.click(screen.getByRole("button", { name: "Tạo bản nháp AI" }));
+    await screen.findByDisplayValue(aiOutput.summary);
+    await user.click(screen.getByRole("button", { name: "Chèn vào ghi chú báo giá" }));
+    await waitFor(() => expect(reviewAiRun).toHaveBeenCalledOnce());
+    expect((screen.getByLabelText("Ghi chú gửi khách") as HTMLTextAreaElement).value).toBe(
+      `Nội dung nhân viên đã soạn\n\n${aiOutput.summary}`,
+    );
+  });
+
   it("keeps the staff quote editor labelled and usable at 360px", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 360 });
     const user = userEvent.setup();

@@ -50,6 +50,10 @@ import type {
   NotificationOperation,
   NotificationOperationFilters,
   NotificationOperationPage,
+  AiRunView,
+  CreateCustomerSummaryInput,
+  CustomerSummaryOutput,
+  AiReviewOutcome,
 } from "./types";
 
 interface DataResponse<T> {
@@ -205,6 +209,24 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
   ): Promise<RepairOrderDetail>;
 }
 
+export interface AiCustomerSummaryApi {
+  createCustomerSummary(
+    shopId: string,
+    input: CreateCustomerSummaryInput,
+    idempotencyKey: string,
+  ): Promise<AiRunView>;
+  getAiRun(shopId: string, aiRunId: string): Promise<AiRunView>;
+  reviewAiRun(
+    shopId: string,
+    aiRunId: string,
+    input: {
+      outcome: AiReviewOutcome;
+      reviewedOutput?: CustomerSummaryOutput;
+      timeSavedSeconds?: number;
+    },
+  ): Promise<AiRunView>;
+}
+
 export interface AuthApi {
   restoreSession(): Promise<AuthData>;
   login(input: LoginInput): Promise<AuthData>;
@@ -277,7 +299,12 @@ type RequestOptions = RequestInit & {
 };
 
 export class BrowserIntakeApi
-  implements IntakeApi, RepairOrderWorkspaceApi, StaffMembershipApi, NotificationOperationsApi
+  implements
+    IntakeApi,
+    RepairOrderWorkspaceApi,
+    AiCustomerSummaryApi,
+    StaffMembershipApi,
+    NotificationOperationsApi
 {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
@@ -627,6 +654,44 @@ export class BrowserIntakeApi
     const response = await this.request<DataResponse<RepairOrderDetail>>(
       `/repair-orders/${encodeURIComponent(repairOrderId)}`,
       { shopId },
+    );
+    return response.data;
+  }
+
+  async createCustomerSummary(
+    shopId: string,
+    input: CreateCustomerSummaryInput,
+    idempotencyKey: string,
+  ): Promise<AiRunView> {
+    const response = await this.request<DataResponse<AiRunView>>("/ai/customer-summaries", {
+      method: "POST",
+      shopId,
+      idempotencyKey,
+      body: JSON.stringify(input),
+    });
+    return response.data;
+  }
+
+  async getAiRun(shopId: string, aiRunId: string): Promise<AiRunView> {
+    const response = await this.request<DataResponse<AiRunView>>(
+      `/ai/runs/${encodeURIComponent(aiRunId)}`,
+      { shopId },
+    );
+    return response.data;
+  }
+
+  async reviewAiRun(
+    shopId: string,
+    aiRunId: string,
+    input: {
+      outcome: AiReviewOutcome;
+      reviewedOutput?: CustomerSummaryOutput;
+      timeSavedSeconds?: number;
+    },
+  ): Promise<AiRunView> {
+    const response = await this.request<DataResponse<AiRunView>>(
+      `/ai/runs/${encodeURIComponent(aiRunId)}/review`,
+      { method: "POST", shopId, body: JSON.stringify(input) },
     );
     return response.data;
   }

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CUSTOMER_SUMMARY_PROMPT_VERSION,
+  CUSTOMER_SUMMARY_SCHEMA_VERSION,
+} from "@repairflow/contracts";
+
+import {
   AI_PROMPT_VERSION,
   AI_SCHEMA_VERSION,
   AiCapabilityRegistry,
@@ -64,5 +69,22 @@ describe("AiCapabilityRegistry", () => {
         input,
       ),
     ).toBe(false);
+  });
+
+  it("resolves the stricter RF-061 customer-summary version without replacing the foundation contract", () => {
+    expect(
+      registry.resolve(
+        "CUSTOMER_SUMMARY",
+        CUSTOMER_SUMMARY_PROMPT_VERSION,
+        CUSTOMER_SUMMARY_SCHEMA_VERSION,
+      ),
+    ).toMatchObject({
+      capability: "CUSTOMER_SUMMARY",
+      promptVersion: CUSTOMER_SUMMARY_PROMPT_VERSION,
+      schemaVersion: CUSTOMER_SUMMARY_SCHEMA_VERSION,
+    });
+    expect(
+      registry.resolve("CUSTOMER_SUMMARY", AI_PROMPT_VERSION, AI_SCHEMA_VERSION),
+    ).not.toBeNull();
   });
 });
