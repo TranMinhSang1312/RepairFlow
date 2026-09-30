@@ -6,6 +6,9 @@ const FORWARDED_REQUEST_HEADERS = [
   "content-type",
   "cookie",
   "idempotency-key",
+  "user-agent",
+  "x-forwarded-for",
+  "x-real-ip",
   "x-shop-id",
   "x-repairflow-invitation-token",
 ] as const;

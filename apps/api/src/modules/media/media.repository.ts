@@ -52,6 +52,20 @@ export class MediaRepository {
     });
   }
 
+  findDownloadable(
+    tenant: Pick<TenantContext, "shopId">,
+    repairOrderId: string,
+    mediaAssetId: string,
+  ): Promise<MediaAsset | null> {
+    return this.prisma.mediaAsset.findFirst({
+      where: tenantWhere(tenant, {
+        id: mediaAssetId,
+        repairOrderId,
+        uploadedAt: { not: null },
+      }),
+    });
+  }
+
   async deleteProvisional(
     tenant: Pick<TenantContext, "shopId">,
     mediaAssetId: string,

@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RepairFlowApiError } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import { BrowserPublicPortalApi, type PublicPortalApi } from "@/lib/api/public-api";
 import type {
   PublicOrder,
@@ -72,13 +73,6 @@ function formatMoney(value: number): string {
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 }
 
 function newIdempotencyKey(): string {
@@ -306,11 +300,13 @@ function DecisionResult({
   decidedAt,
   approvedAmount,
   selectedItems,
+  timeZone,
 }: {
   decision: QuoteDecision;
   decidedAt: string | null;
   approvedAmount?: number;
   selectedItems?: PublicQuoteItem[];
+  timeZone?: string;
 }) {
   return (
     <section className="public-decision-result" aria-live="polite" tabIndex={-1}>
@@ -318,7 +314,7 @@ function DecisionResult({
       <h2>{DECISION_LABELS[decision]}</h2>
       <p>
         {decidedAt
-          ? `Thời gian ghi nhận: ${formatDateTime(decidedAt)}`
+          ? `Thời gian ghi nhận: ${formatShopDateTime(decidedAt, timeZone)}`
           : "Thời gian ghi nhận chưa được cung cấp."}
       </p>
       {approvedAmount !== undefined && decision !== "DECLINED" && (
@@ -570,13 +566,13 @@ export function PublicQuotePortalScreen({ token, api: suppliedApi }: PublicQuote
             {order.readyAt && (
               <div>
                 <dt>Sẵn sàng nhận máy</dt>
-                <dd>{formatDateTime(order.readyAt)}</dd>
+                <dd>{formatShopDateTime(order.readyAt, order.shopTimezone)}</dd>
               </div>
             )}
             {order.returnedAt && (
               <div>
                 <dt>Đã bàn giao</dt>
-                <dd>{formatDateTime(order.returnedAt)}</dd>
+                <dd>{formatShopDateTime(order.returnedAt, order.shopTimezone)}</dd>
               </div>
             )}
             {order.completionOutcome && (
@@ -593,8 +589,8 @@ export function PublicQuotePortalScreen({ token, api: suppliedApi }: PublicQuote
                   Bảo hành {order.warranty.status === "ACTIVE" ? "còn hiệu lực" : "đã hết hạn"}
                 </strong>
                 <span>
-                  {formatDateTime(order.warranty.startsAt)} –{" "}
-                  {formatDateTime(order.warranty.endsAt)}
+                  {formatShopDateTime(order.warranty.startsAt, order.shopTimezone)} –{" "}
+                  {formatShopDateTime(order.warranty.endsAt, order.shopTimezone)}
                 </span>
               </div>
               <p>{order.warranty.terms}</p>
@@ -623,7 +619,7 @@ export function PublicQuotePortalScreen({ token, api: suppliedApi }: PublicQuote
               <p className="eyebrow">Báo giá phiên bản {quote.versionNo}</p>
               <h2 id="public-quote-heading">Chi tiết báo giá</h2>
             </div>
-            <p>Hiệu lực đến {formatDateTime(quote.expiresAt)}</p>
+            <p>Hiệu lực đến {formatShopDateTime(quote.expiresAt, order.shopTimezone)}</p>
           </header>
 
           {quote.customerNote && (
@@ -663,10 +659,15 @@ export function PublicQuotePortalScreen({ token, api: suppliedApi }: PublicQuote
                 decidedAt={result.decidedAt}
                 decision={result.decision}
                 selectedItems={result.decision === "DECLINED" ? [] : selectedItems}
+                timeZone={order.shopTimezone ?? "Asia/Ho_Chi_Minh"}
               />
             </section>
           ) : terminalDecision ? (
-            <DecisionResult decidedAt={quote.decidedAt} decision={terminalDecision} />
+            <DecisionResult
+              decidedAt={quote.decidedAt}
+              decision={terminalDecision}
+              timeZone={order.shopTimezone ?? "Asia/Ho_Chi_Minh"}
+            />
           ) : review ? (
             <section className="public-decision-review" aria-labelledby="decision-review-heading">
               <p className="eyebrow">Xác nhận cuối cùng</p>
@@ -795,7 +796,9 @@ export function PublicQuotePortalScreen({ token, api: suppliedApi }: PublicQuote
                 <span className="timeline-dot" aria-hidden="true" />
                 <div>
                   <p>{event.message}</p>
-                  <time dateTime={event.createdAt}>{formatDateTime(event.createdAt)}</time>
+                  <time dateTime={event.createdAt}>
+                    {formatShopDateTime(event.createdAt, order.shopTimezone)}
+                  </time>
                 </div>
               </li>
             ))}

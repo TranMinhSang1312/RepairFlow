@@ -47,6 +47,8 @@ Messages may be localized. Client behavior must depend on stable `code`, not the
 | 409 | `STAFF_INVITATION_SIGN_IN_REQUIRED` | Recipient email now belongs to an existing identity. |
 | 403 | `STAFF_INVITATION_RECIPIENT_MISMATCH` | Signed-in user is not the invitation recipient. |
 | 409 | `STAFF_MEMBERSHIP_ALREADY_EXISTS` | Recipient already has a membership in the destination shop. |
+| 409 | `BRANCH_NAME_ALREADY_EXISTS` | A shop branch already uses the requested name. |
+| 409 | `LAST_ACTIVE_BRANCH_REQUIRED` | The shop must keep at least one active branch. |
 
 ## Repair workflow
 

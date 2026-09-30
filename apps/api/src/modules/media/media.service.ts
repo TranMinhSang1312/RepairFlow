@@ -15,6 +15,7 @@ import { MediaRepository } from "./media.repository.js";
 
 const MAX_UPLOAD_BYTES = 15_000_000;
 const UPLOAD_TTL_MS = 10 * 60 * 1000;
+const DOWNLOAD_TTL_MS = 5 * 60 * 1000;
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ALLOWED_AUDIO_MIME_TYPES = new Set(["audio/wav", "audio/x-wav"]);
 const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
@@ -70,6 +71,50 @@ export class MediaService {
     if (!(await this.repository.findVisibleOrder(tenant, orderId))) throw this.notFound();
     this.assertUploadMetadata(dto);
     return this.createSignedAsset(tenant, dto, orderId);
+  }
+
+  async presignDownload(
+    tenant: TenantContext,
+    repairOrderId: string,
+    mediaAssetId: string,
+  ): Promise<{
+    data: { downloadUrl: string; expiresAt: string; mimeType: string; originalName: string };
+  }> {
+    if (!UUID_PATTERN.test(repairOrderId) || !UUID_PATTERN.test(mediaAssetId))
+      throw this.notFound();
+    const orderId = repairOrderId.toLowerCase();
+    if (!(await this.repository.findVisibleOrder(tenant, orderId))) throw this.notFound();
+    const asset = await this.repository.findDownloadable(
+      tenant,
+      orderId,
+      mediaAssetId.toLowerCase(),
+    );
+    if (!asset) throw this.notFound();
+    if (!this.storage.presignGet) {
+      throw new ApiException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "STORAGE_UNAVAILABLE",
+        "The download service is temporarily unavailable.",
+      );
+    }
+    const expiresAt = new Date(Date.now() + DOWNLOAD_TTL_MS);
+    try {
+      const downloadUrl = await this.storage.presignGet({ objectKey: asset.objectKey, expiresAt });
+      return {
+        data: {
+          downloadUrl,
+          expiresAt: expiresAt.toISOString(),
+          mimeType: asset.mimeType,
+          originalName: asset.originalName,
+        },
+      };
+    } catch {
+      throw new ApiException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "STORAGE_UNAVAILABLE",
+        "The download service is temporarily unavailable.",
+      );
+    }
   }
 
   private assertUploadMetadata(dto: PresignOrderMediaDto): void {

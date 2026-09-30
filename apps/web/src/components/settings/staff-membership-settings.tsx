@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { BrowserIntakeApi } from "@/lib/api/intake-api";
 import type {
   CurrentUser,
@@ -18,7 +19,7 @@ function commandKey(prefix: string): string {
 
 function dateTime(value: string | null): string {
   if (!value) return "Chưa tham gia";
-  return new Date(value).toLocaleString("vi-VN");
+  return formatShopDateTime(value);
 }
 
 export function StaffMembershipSettings({

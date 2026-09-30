@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type { Diagnosis, Membership, RepairOrderDetail } from "@/lib/api/types";
 
@@ -104,7 +105,7 @@ export function DiagnosisPanel({
                 <div className="diagnosis-title">
                   <strong>Chẩn đoán #{diagnosis.revisionNo}</strong>
                   <time dateTime={diagnosis.createdAt}>
-                    {new Date(diagnosis.createdAt).toLocaleString("vi-VN")}
+                    {formatShopDateTime(diagnosis.createdAt, membership.timezone)}
                   </time>
                 </div>
                 {diagnosis.supersedesId && <small>Bản sửa của một chẩn đoán trước</small>}

@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -34,7 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("checking");
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [sessionError, setSessionError] = useState("");
-  const initialized = useRef(false);
   const [api] = useState(
     () =>
       new BrowserIntakeApi("/api/v1", fetch, {
@@ -68,9 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [api]);
 
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    void restore();
+    // Defer network restoration until hydration has committed. Mocked or cached
+    // refresh responses can otherwise update the shell during hydration.
+    const timer = window.setTimeout(() => void restore(), 0);
+    return () => window.clearTimeout(timer);
   }, [restore]);
 
   const value = useMemo<AuthContextValue>(

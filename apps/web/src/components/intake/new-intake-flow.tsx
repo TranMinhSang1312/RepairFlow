@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import { BrowserIntakeApi, type IntakeApi } from "@/lib/api/intake-api";
 import type {
   AuthData,
@@ -504,7 +505,7 @@ export function NewIntakeFlow({ api: suppliedApi }: NewIntakeFlowProps) {
             </div>
             <div>
               <dt>Tiếp nhận lúc</dt>
-              <dd>{new Date(receipt.receivedAt).toLocaleString("vi-VN")}</dd>
+              <dd>{formatShopDateTime(receipt.receivedAt, activeMembership.timezone)}</dd>
             </div>
             <div>
               <dt>Ưu tiên</dt>

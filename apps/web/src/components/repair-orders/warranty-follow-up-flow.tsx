@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { RepairFlowApiError } from "@/lib/api/errors";
+import { parseShopDateTimeLocal } from "@/lib/datetime";
 import type { RepairOrderWorkspaceApi, UploadProgress } from "@/lib/api/intake-api";
 import type {
   CreateWarrantyFollowUpInput,
@@ -174,8 +175,10 @@ export function WarrantyFollowUpFlow({
     else if (uploaded.length < Math.max(1, membership.intakePhotoMinimum)) {
       nextErrors.media = `Cần ít nhất ${Math.max(1, membership.intakePhotoMinimum)} ảnh tiếp nhận đã tải lên.`;
     }
-    if (promisedAt && Number.isNaN(new Date(promisedAt).getTime()))
-      nextErrors.promisedAt = "Thời gian hẹn trả không hợp lệ.";
+    const promisedInstant = promisedAt
+      ? parseShopDateTimeLocal(promisedAt, membership.timezone)
+      : null;
+    if (promisedAt && !promisedInstant) nextErrors.promisedAt = "Thời gian hẹn trả không hợp lệ.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return null;
     return {
@@ -185,7 +188,7 @@ export function WarrantyFollowUpFlow({
       reportedProblem: reportedProblem.trim(),
       intakeCondition: intakeCondition.trim(),
       consentAccepted: true,
-      promisedAt: promisedAt ? new Date(promisedAt).toISOString() : null,
+      promisedAt: promisedInstant?.toISOString() ?? null,
       accessories: accessories.map((item) => ({
         name: item.name.trim(),
         conditionNote: item.conditionNote?.trim() || null,

@@ -21,6 +21,7 @@
     "typecheck": "pnpm build:packages && pnpm typecheck:tools && pnpm -r --if-present typecheck",
     "typecheck:tools": "tsc -p tsconfig.tools.json --noEmit",
     "test": "pnpm run test:ops && pnpm -r --if-present test",
+    "openapi:lint": "redocly lint docs/openapi.yaml",
     "test:ops": "node --test scripts/*.test.mjs",
     "ops:backup": "node scripts/backup-local.mjs",
     "ops:restore-drill": "node scripts/restore-drill-local.mjs",
@@ -47,6 +48,7 @@
     "prisma": "7.10.0",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.70.0"
+    "typescript-eslint": "8.70.0",
+    "@redocly/cli": "2.22.1"
   }
 }

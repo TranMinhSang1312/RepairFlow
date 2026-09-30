@@ -1,12 +1,14 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs PrismaService at runtime. */
 
 import { Injectable } from "@nestjs/common";
+import { parseApiEnvironment } from "@repairflow/config";
 import type { HealthResponse } from "@repairflow/contracts";
 
 import { PrismaService } from "../infra/database/prisma.service.js";
 
 @Injectable()
 export class HealthService {
+  private readonly version = parseApiEnvironment(process.env).RELEASE_VERSION;
   constructor(private readonly prisma: PrismaService) {}
 
   live(now = new Date()): HealthResponse {
@@ -30,7 +32,7 @@ export class HealthService {
     return {
       service: "api",
       status,
-      version: "0.1.0",
+      version: this.version,
       timestamp: now.toISOString(),
       ...(checks ? { checks } : {}),
     };

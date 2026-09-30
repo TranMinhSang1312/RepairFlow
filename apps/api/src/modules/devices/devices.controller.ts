@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs runtime constructors for DI and validation metadata. */
 
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 
 import { AccessTokenGuard } from "../../common/auth/access-token.guard.js";
 import { Capability } from "../../common/permissions/capability.js";
@@ -9,7 +9,7 @@ import { RequireCapabilities } from "../../common/permissions/require-capabiliti
 import { CurrentTenant } from "../../common/tenant/current-tenant.decorator.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import { TenantGuard } from "../../common/tenant/tenant.guard.js";
-import { CreateDeviceDto } from "./device.dto.js";
+import { CreateDeviceDto, UpdateDeviceDto } from "./device.dto.js";
 import { DevicesService } from "./devices.service.js";
 
 @Controller("customers/:customerId/devices")
@@ -31,5 +31,26 @@ export class DevicesController {
     @Body() dto: CreateDeviceDto,
   ) {
     return this.devicesService.create(tenant, customerId, dto);
+  }
+
+  @Patch(":deviceId")
+  @RequireCapabilities(Capability.DEVICE_WRITE)
+  update(
+    @CurrentTenant() tenant: TenantContext,
+    @Param("customerId") customerId: string,
+    @Param("deviceId") deviceId: string,
+    @Body() dto: UpdateDeviceDto,
+  ) {
+    return this.devicesService.update(tenant, customerId, deviceId, dto);
+  }
+
+  @Delete(":deviceId")
+  @RequireCapabilities(Capability.DEVICE_WRITE)
+  archive(
+    @CurrentTenant() tenant: TenantContext,
+    @Param("customerId") customerId: string,
+    @Param("deviceId") deviceId: string,
+  ) {
+    return this.devicesService.archive(tenant, customerId, deviceId);
   }
 }

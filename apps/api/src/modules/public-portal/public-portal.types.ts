@@ -42,6 +42,7 @@ export interface PublicOrderResponse {
   data: {
     shopName: string;
     shopContact: string | null;
+    shopTimezone: string;
     orderCode: string;
     deviceLabel: string;
     status: RepairOrderStatus;

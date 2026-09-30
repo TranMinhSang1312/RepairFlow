@@ -13,6 +13,11 @@ import type {
   QuoteSendChannel,
   RepairOrderDetail,
 } from "@/lib/api/types";
+import {
+  formatShopDateTime,
+  formatShopDateTimeLocal,
+  parseShopDateTimeLocal,
+} from "@/lib/datetime";
 
 import { AiCustomerSummary } from "./ai-customer-summary";
 
@@ -99,15 +104,7 @@ function newItem(): EditableQuoteItem {
   };
 }
 
-function localDateTime(value: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function formFromQuote(quote?: Quote): QuoteFormState {
+function formFromQuote(quote: Quote | undefined, timeZone: string): QuoteFormState {
   if (!quote) {
     return {
       diagnosisId: "",
@@ -121,7 +118,7 @@ function formFromQuote(quote?: Quote): QuoteFormState {
     diagnosisId: quote.diagnosisId ?? "",
     discount: String(quote.discount),
     customerNote: quote.customerNote ?? "",
-    expiresAt: localDateTime(quote.expiresAt),
+    expiresAt: formatShopDateTimeLocal(quote.expiresAt, timeZone),
     items: quote.items.map((item) => ({
       clientId: item.id,
       kind: item.kind,
@@ -145,10 +142,8 @@ function money(value: number): string {
   }).format(value);
 }
 
-function dateTime(value: string | null): string {
-  if (!value) return "Theo mặc định của cửa hàng";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Không xác định" : date.toLocaleString("vi-VN");
+function dateTime(value: string | null, timeZone: string): string {
+  return value ? formatShopDateTime(value, timeZone) : "Theo mặc định của cửa hàng";
 }
 
 function previewFor(form: QuoteFormState): QuotePreview {
@@ -188,12 +183,14 @@ function matchesAuthoritativeTotals(quote: Quote, preview: QuotePreview): boolea
   );
 }
 
-function toInput(form: QuoteFormState): CreateQuoteInput {
+function toInput(form: QuoteFormState, timeZone: string): CreateQuoteInput {
   return {
     diagnosisId: form.diagnosisId || null,
     discount: Number(form.discount),
     customerNote: form.customerNote.trim() || null,
-    expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+    expiresAt: form.expiresAt
+      ? (parseShopDateTimeLocal(form.expiresAt, timeZone)?.toISOString() ?? null)
+      : null,
     items: form.items.map((item) => ({
       kind: item.kind,
       description: item.description.trim(),
@@ -222,7 +219,9 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
         .sort((left, right) => right.versionNo - left.versionNo)[0],
     [quoteVersions],
   );
-  const [form, setForm] = useState<QuoteFormState>(() => formFromQuote(highestDraft));
+  const [form, setForm] = useState<QuoteFormState>(() =>
+    formFromQuote(highestDraft, membership.timezone),
+  );
   const [savedQuote, setSavedQuote] = useState<Quote | null>(highestDraft ?? null);
   const [authoritativePreview, setAuthoritativePreview] = useState<QuotePreview | null>(() =>
     highestDraft ? previewFromQuote(highestDraft) : null,
@@ -259,9 +258,9 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
       localMutationRef.current = null;
     }
     setSavedQuote(highestDraft ?? null);
-    setForm(formFromQuote(highestDraft));
+    setForm(formFromQuote(highestDraft, membership.timezone));
     setAuthoritativePreview(highestDraft ? previewFromQuote(highestDraft) : null);
-  }, [dirty, highestDraft, quoteVersions, saving, sending]);
+  }, [dirty, highestDraft, membership.timezone, quoteVersions, saving, sending]);
 
   useEffect(() => {
     if (confirmQuote) dialogInitialFocusRef.current?.focus();
@@ -403,8 +402,8 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
       next.customerNote = "Ghi chú tối đa 3.000 ký tự.";
     }
     if (form.expiresAt) {
-      const expiresAt = new Date(form.expiresAt);
-      if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+      const expiresAt = parseShopDateTimeLocal(form.expiresAt, membership.timezone);
+      if (!expiresAt || expiresAt.getTime() <= Date.now()) {
         next.expiresAt = "Thời hạn báo giá phải ở tương lai.";
       }
     }
@@ -420,14 +419,14 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
     setMessage("");
     const submittedPreview = clientPreview;
     try {
-      const input = toInput(form);
+      const input = toInput(form, membership.timezone);
       const quote = activeDraft
         ? await api.replaceDraftQuote(shopId, activeDraft.id, input)
         : await api.createQuote(shopId, order.id, input);
       const totalsChanged = !matchesAuthoritativeTotals(quote, submittedPreview);
       localMutationRef.current = quote;
       setSavedQuote(quote);
-      setForm(formFromQuote(quote));
+      setForm(formFromQuote(quote, membership.timezone));
       setAuthoritativePreview(previewFromQuote(quote));
       setDirty(false);
       setFieldErrors({});
@@ -550,7 +549,9 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
                       {STATUS_LABELS[quote.status]}
                     </span>
                   </div>
-                  <time dateTime={quote.updatedAt}>{dateTime(quote.updatedAt)}</time>
+                  <time dateTime={quote.updatedAt}>
+                    {dateTime(quote.updatedAt, membership.timezone)}
+                  </time>
                 </div>
                 <ul className="quote-readonly-items">
                   {quote.items.map((item) => (
@@ -589,7 +590,7 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
                   </div>
                   <div>
                     <dt>Hết hạn</dt>
-                    <dd>{dateTime(quote.expiresAt)}</dd>
+                    <dd>{dateTime(quote.expiresAt, membership.timezone)}</dd>
                   </div>
                 </dl>
                 {quote.customerNote && <p className="quote-customer-note">{quote.customerNote}</p>}
@@ -1108,7 +1109,7 @@ export function QuotePanel({ api, membership, order, shopId, onReload }: QuotePa
               </div>
               <div>
                 <dt>Hết hạn</dt>
-                <dd>{dateTime(confirmQuote.expiresAt)}</dd>
+                <dd>{dateTime(confirmQuote.expiresAt, membership.timezone)}</dd>
               </div>
               <div>
                 <dt>Kênh</dt>

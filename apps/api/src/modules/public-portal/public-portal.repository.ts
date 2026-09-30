@@ -22,7 +22,7 @@ const publicTokenInclude = {
       returnedAt: true,
       lockVersion: true,
       deviceSnapshot: true,
-      shop: { select: { name: true, contactPhone: true } },
+      shop: { select: { name: true, contactPhone: true, timezone: true } },
       warranty: {
         select: { startsAt: true, endsAt: true, termsSnapshot: true },
       },

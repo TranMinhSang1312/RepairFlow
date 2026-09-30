@@ -7,6 +7,7 @@ export interface CustomerView {
   email: string | null;
   notes: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface CustomerResponse {
@@ -26,5 +27,6 @@ export function toCustomerView(customer: Customer): CustomerView {
     email: customer.email,
     notes: customer.notes,
     createdAt: customer.createdAt.toISOString(),
+    updatedAt: customer.updatedAt.toISOString(),
   };
 }

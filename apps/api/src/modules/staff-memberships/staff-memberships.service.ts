@@ -400,7 +400,7 @@ export class StaffMembershipsService {
 
   async inspectInvitation(rawToken: string | undefined, request: Request) {
     const token = this.validatedToken(rawToken);
-    this.rateLimiter.assertAllowed(
+    await this.rateLimiter.assertAllowed(
       this.tokens.rateLimitKey(token, clientIp(request)),
       PUBLIC_POLICY,
     );
@@ -425,7 +425,7 @@ export class StaffMembershipsService {
     request: Request,
   ): Promise<IssuedAuth> {
     const token = this.validatedToken(rawToken);
-    this.rateLimiter.assertAllowed(
+    await this.rateLimiter.assertAllowed(
       this.tokens.rateLimitKey(token, clientIp(request)),
       ACCEPT_POLICY,
     );
@@ -475,7 +475,7 @@ export class StaffMembershipsService {
 
   async acceptExistingInvitation(rawToken: string | undefined, userId: string, request: Request) {
     const token = this.validatedToken(rawToken);
-    this.rateLimiter.assertAllowed(
+    await this.rateLimiter.assertAllowed(
       this.tokens.rateLimitKey(token, clientIp(request)),
       ACCEPT_POLICY,
     );

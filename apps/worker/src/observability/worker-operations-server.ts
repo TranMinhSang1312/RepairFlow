@@ -32,7 +32,7 @@ export class WorkerOperationsServer {
         json(response, 503, {
           service: "worker",
           status: "unavailable",
-          version: "0.1.0",
+          version: process.env.RELEASE_VERSION ?? "0.1.0",
           timestamp: this.clock().toISOString(),
           checks: { operations: "unavailable" },
         });

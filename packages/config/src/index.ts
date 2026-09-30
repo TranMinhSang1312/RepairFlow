@@ -18,6 +18,9 @@ const apiEnvironmentSchema = z
     NODE_ENV: nodeEnvironment.default("development"),
     API_HOST: z.string().default("0.0.0.0"),
     API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+    API_TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+    RATE_LIMIT_NAMESPACE: z.string().min(1).max(128).default("default"),
+    RELEASE_VERSION: z.string().min(1).max(128).default("0.1.0"),
     LOG_LEVEL: logLevel.default("info"),
     DATABASE_URL: z.string().min(1),
     ACCESS_TOKEN_SECRET: z.string().min(32),
@@ -95,6 +98,7 @@ const workerEnvironmentSchema = z
   .object({
     NODE_ENV: nodeEnvironment.default("development"),
     LOG_LEVEL: logLevel.default("info"),
+    RELEASE_VERSION: z.string().min(1).max(128).default("0.1.0"),
     DATABASE_URL: z.string().min(1),
     WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(5000),
     WORKER_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(10),
@@ -277,6 +281,7 @@ const workerEnvironmentSchema = z
 const webEnvironmentSchema = z.object({
   NODE_ENV: nodeEnvironment.default("development"),
   NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:3001/api/v1"),
+  NEXT_PUBLIC_OBJECT_STORAGE_ORIGIN: z.string().url().default("http://localhost:9000"),
 });
 
 export type ApiEnvironment = z.infer<typeof apiEnvironmentSchema>;

@@ -35,7 +35,7 @@ export class WorkerReadiness {
     return {
       service: "worker",
       status: database === "ok" && polling === "ok" ? "ok" : "unavailable",
-      version: "0.1.0",
+      version: process.env.RELEASE_VERSION ?? "0.1.0",
       timestamp: now.toISOString(),
       checks: { database, polling },
     };

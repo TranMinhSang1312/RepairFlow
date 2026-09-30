@@ -241,6 +241,17 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
+model RateLimitBucket {
+  keyHash   String   @id
+  count     Int
+  resetAt   DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([resetAt])
+  @@map("rate_limit_buckets")
+}
+
 model Shop {
   id                      String   @id @default(uuid()) @db.Uuid
   name                    String
@@ -252,6 +263,7 @@ model Shop {
   defaultQuoteExpiryHours Int      @default(48)
   defaultWarrantyTerms    String?
   settings                Json     @default("{}")
+  lockVersion             Int      @default(0)
   createdAt               DateTime @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime @updatedAt @db.Timestamptz(3)
 
@@ -279,6 +291,7 @@ model Branch {
   name      String
   address   String?
   isActive  Boolean  @default(true)
+  lockVersion Int     @default(0)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 

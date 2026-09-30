@@ -48,7 +48,7 @@ describe("identity API", () => {
     rateLimiter = app.get(RateLimiterService);
   });
 
-  beforeEach(() => rateLimiter.clear());
+  beforeEach(async () => rateLimiter.clear());
 
   afterAll(async () => {
     for (const shopId of createdShopIds) {

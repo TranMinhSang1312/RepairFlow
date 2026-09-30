@@ -53,7 +53,7 @@ describe("owner notification operations API", () => {
     rateLimiter = app.get(RateLimiterService);
   });
 
-  beforeEach(() => rateLimiter.clear());
+  beforeEach(async () => rateLimiter.clear());
 
   afterAll(async () => {
     await prisma.authSession.deleteMany({ where: { userId: { in: userIds } } });

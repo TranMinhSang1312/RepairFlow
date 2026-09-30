@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import { BrowserIntakeApi, type RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type {
   ActiveTechnician,
@@ -56,11 +57,9 @@ function activeMemberships(auth: AuthData): Membership[] {
   return auth.user.memberships.filter((membership) => membership.status === "ACTIVE");
 }
 
-function dateTime(value: string | null): string {
+function dateTime(value: string | null, timeZone?: string): string {
   if (!value) return "Chưa có";
-  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(value),
-  );
+  return formatShopDateTime(value, timeZone);
 }
 
 function fileSize(bytes: number): string {
@@ -95,12 +94,31 @@ export function RepairOrderWorkspaceScreen({
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState("");
   const [staleWarning, setStaleWarning] = useState(false);
+  const [downloadingMediaId, setDownloadingMediaId] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState("");
   const [technicians, setTechnicians] = useState<ActiveTechnician[]>([]);
   const [tab, setTab] = useState<WorkspaceTab>(() => parseWorkspaceTab(params));
   const initialShopId = useState(() => params.get("shopId"))[0];
   const sharedSessionInitialized = useRef(false);
   const latestRequest = useRef(0);
   const orderRef = useRef<RepairOrderDetail | null>(null);
+
+  const downloadMedia = useCallback(
+    async (mediaAssetId: string) => {
+      if (!shopId || !api.downloadRepairOrderMedia) return;
+      setDownloadingMediaId(mediaAssetId);
+      setMediaError("");
+      try {
+        const download = await api.downloadRepairOrderMedia(shopId, repairOrderId, mediaAssetId);
+        window.open(download.downloadUrl, "_blank", "noopener,noreferrer");
+      } catch (reason) {
+        setMediaError(safeErrorMessage(reason));
+      } finally {
+        setDownloadingMediaId(null);
+      }
+    },
+    [api, repairOrderId, shopId],
+  );
 
   useEffect(() => {
     if (sessionUser) {
@@ -403,11 +421,11 @@ export function RepairOrderWorkspaceScreen({
               </div>
               <div>
                 <dt>Nhận lúc</dt>
-                <dd>{dateTime(order.receivedAt)}</dd>
+                <dd>{dateTime(order.receivedAt, membership.timezone)}</dd>
               </div>
               <div>
                 <dt>Hẹn trả</dt>
-                <dd>{dateTime(order.promisedAt)}</dd>
+                <dd>{dateTime(order.promisedAt, membership.timezone)}</dd>
               </div>
               <div>
                 <dt>Kỹ thuật viên</dt>
@@ -484,8 +502,13 @@ export function RepairOrderWorkspaceScreen({
             <header>
               <p className="eyebrow">Bằng chứng tiếp nhận</p>
               <h2>{order.media.length} tệp</h2>
-              <p>API hiện cung cấp metadata tệp; ảnh gốc vẫn được bảo vệ trong kho riêng.</p>
+              <p>Ảnh chỉ được cấp URL tạm thời sau khi kiểm tra quyền theo cửa hàng.</p>
             </header>
+            {mediaError ? (
+              <p className="form-error" role="alert">
+                {mediaError}
+              </p>
+            ) : null}
             {order.media.length ? (
               <ul className="media-grid">
                 {order.media.map((item) => (
@@ -499,9 +522,19 @@ export function RepairOrderWorkspaceScreen({
                     </small>
                     <small>
                       {item.uploadedAt
-                        ? `Tải lên ${dateTime(item.uploadedAt)}`
+                        ? `Tải lên ${dateTime(item.uploadedAt, membership.timezone)}`
                         : "Chưa xác nhận tải lên"}
                     </small>
+                    {item.uploadedAt && api.downloadRepairOrderMedia ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void downloadMedia(item.id)}
+                        disabled={downloadingMediaId === item.id}
+                      >
+                        {downloadingMediaId === item.id ? "Đang mở…" : "Xem / tải ảnh"}
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -616,7 +649,7 @@ export function RepairOrderWorkspaceScreen({
                       </p>
                       {summary && <pre>{summary}</pre>}
                       <small>
-                        {dateTime(event.createdAt)} · {event.actorType}
+                        {dateTime(event.createdAt, membership.timezone)} · {event.actorType}
                       </small>
                     </div>
                   </li>

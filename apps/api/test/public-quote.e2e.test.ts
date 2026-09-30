@@ -327,6 +327,7 @@ describe("public quote read and decision API", () => {
     expect(response.body.data).toEqual({
       shopName: expect.stringContaining("Public Shop"),
       shopContact: "028-5555-0101",
+      shopTimezone: "Asia/Ho_Chi_Minh",
       orderCode: expect.stringMatching(/^PUBLIC-/u),
       deviceLabel: "Acme Phone X",
       status: RepairOrderStatus.AWAITING_APPROVAL,
@@ -719,7 +720,7 @@ describe("public quote read and decision API", () => {
   });
 
   it("rate-limits public access and redacts tokens from errors and log URLs", async () => {
-    rateLimiter.clear();
+    await rateLimiter.clear();
     const rawToken = randomBytes(32).toString("base64url");
     let lastResponse: Awaited<ReturnType<typeof readRequest>>;
     for (let index = 0; index <= 60; index += 1) {
@@ -745,6 +746,6 @@ describe("public quote read and decision API", () => {
       params: "[REDACTED]",
     });
     expect(JSON.stringify(serializedRequest)).not.toContain(rawToken);
-    rateLimiter.clear();
+    await rateLimiter.clear();
   });
 });

@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -10,6 +11,7 @@ import { parseApiEnvironment } from "@repairflow/config";
 
 import type {
   ObjectStoragePort,
+  PresignGetInput,
   PresignPutInput,
   StoredObjectMetadata,
 } from "./object-storage.port.js";
@@ -45,6 +47,15 @@ export class S3ObjectStorageService implements ObjectStoragePort {
         ContentLength: input.byteSize,
         ...(metadata ? { Metadata: metadata } : {}),
       }),
+      { expiresIn },
+    );
+  }
+
+  presignGet(input: PresignGetInput): Promise<string> {
+    const expiresIn = Math.max(1, Math.floor((input.expiresAt.getTime() - Date.now()) / 1000));
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: input.objectKey }),
       { expiresIn },
     );
   }

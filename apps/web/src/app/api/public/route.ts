@@ -6,6 +6,8 @@ const FORWARDED_REQUEST_HEADERS = [
   "content-type",
   "idempotency-key",
   "user-agent",
+  "x-forwarded-for",
+  "x-real-ip",
 ] as const;
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "retry-after"] as const;
 
