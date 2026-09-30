@@ -28,6 +28,9 @@ The execution state machine is `QUEUED -> RUNNING -> SUCCEEDED | FAILED`. `REJEC
 - Budget accounting is scoped by `(shop, capability, UTC month)`. Enqueue reserves the configured upper-bound cost under a database lock; worker completion reconciles reserved and spent micro-USD.
 - Same `Idempotency-Key` and payload return the same run without another reservation or outbox event. A changed payload returns `IDEMPOTENCY_KEY_REUSED`.
 - OWNER manages flags and budgets with optimistic concurrency. Global disable overrides shop settings.
+- `GET /api/v1/settings/ai` also returns current UTC-month reserved and spent micro-USD for each
+  capability. `GET /api/v1/settings/ai/analytics` returns owner-only daily aggregates for at most
+  90 days with a stable cursor; it never returns run/order/user IDs or AI content.
 - `GET /api/v1/ai/runs/{id}` never returns the private input reference, prompt, provider body, token usage, or provider request identifier.
 - `POST /api/v1/ai/runs/{id}/review` validates reviewed output against the capability schema, calculates edit distance, discards the submitted reviewed value, and never mutates a business entity.
 
@@ -129,11 +132,22 @@ Suggest diagnostic or QC checks based on device type, reported symptom, and shop
 
 ```json
 {
+  "phase": "QC",
   "deviceType": "LAPTOP",
   "reportedProblem": "Không nhận sạc",
   "allowedChecklistItems": [
-    {"id": "power-adapter", "label": "Kiểm tra adapter"},
-    {"id": "charge-port", "label": "Kiểm tra cổng sạc"}
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "label": "Kiểm tra adapter",
+      "isRequired": true,
+      "allowNa": false
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "label": "Kiểm tra cổng sạc",
+      "isRequired": true,
+      "allowNa": false
+    }
   ]
 }
 ```
@@ -142,13 +156,25 @@ Suggest diagnostic or QC checks based on device type, reported symptom, and shop
 
 ```json
 {
-  "suggestedItemIds": ["power-adapter", "charge-port"],
+  "suggestedItemIds": [
+    "11111111-1111-4111-8111-111111111111",
+    "22222222-2222-4222-8222-222222222222"
+  ],
   "reasoningSummary": "Triệu chứng liên quan đường cấp nguồn.",
-  "safetyWarnings": []
+  "safetyWarnings": ["Nhân viên vẫn phải thực hiện đầy đủ checklist của cửa hàng."]
 }
 ```
 
-The output may only select from supplied catalogue IDs. It cannot create a binding diagnosis or mark a check as passed.
+The client sends only `repairOrderId`, `qcTemplateId`, and `phase`. The API verifies the active
+tenant-owned order and template, enforces active technician assignment, and builds this redacted
+snapshot. The current QC schema has no device-compatibility field, so active templates are treated
+as globally compatible until a separately specified template taxonomy is introduced.
+
+Prompt version is `checklist-suggestion-v1` and schema version is `1`. Output IDs must be unique and
+a subset of the server-owned item allowlist. Unknown or duplicate IDs fail the whole run with
+`AI_OUTPUT_INVALID`. Summary and warnings must be plain text and cannot assert a diagnosis, price,
+deadline, guarantee, PASS, or FAIL. Apply records review telemetry and only highlights items in the
+local QC form; it never creates a template, fills a result, submits QC, or changes repair state.
 
 ## Capability: `CUSTOMER_SUMMARY`
 
@@ -206,3 +232,8 @@ For each capability, measure:
 - Staff-estimated time saved during the pilot.
 
 Do not store raw secrets or prohibited PII in analytics.
+
+Analytics are grouped by UTC day and capability. They contain counts, review outcomes, p50/p95
+latency, token totals, estimated cost, and optional average edit-distance/time-saved values. They do
+not contain run ID, repair-order ID, staff/customer identity, prompt, input snapshot, output,
+provider body, destination, raw exception, token, or secret.

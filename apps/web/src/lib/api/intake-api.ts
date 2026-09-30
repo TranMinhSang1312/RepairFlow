@@ -59,6 +59,10 @@ import type {
   IntakeDraftOutput,
   DeviceOcrField,
   DeviceOcrOutput,
+  ChecklistSuggestionOutput,
+  AiSettingsView,
+  AiCapability,
+  AiAnalyticsPage,
 } from "./types";
 
 interface DataResponse<T> {
@@ -111,7 +115,8 @@ export interface IntakeApi {
     aiRunId: string,
     input: {
       outcome: AiReviewOutcome;
-      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput;
+      reviewedOutput?:
+        CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput | ChecklistSuggestionOutput;
       timeSavedSeconds?: number;
     },
   ): Promise<AiRunView>;
@@ -214,6 +219,23 @@ export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
     input: CreateQcRunInput,
     idempotencyKey: string,
   ): Promise<QcRunSubmissionResult>;
+  listAiCapabilities?(shopId: string): Promise<AiCapabilityAvailability[]>;
+  createChecklistSuggestion?(
+    shopId: string,
+    input: { repairOrderId: string; qcTemplateId: string; phase: "DIAGNOSIS" | "QC" },
+    idempotencyKey: string,
+  ): Promise<AiRunView>;
+  getAiRun?(shopId: string, aiRunId: string): Promise<AiRunView>;
+  reviewAiRun?(
+    shopId: string,
+    aiRunId: string,
+    input: {
+      outcome: AiReviewOutcome;
+      reviewedOutput?:
+        CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput | ChecklistSuggestionOutput;
+      timeSavedSeconds?: number;
+    },
+  ): Promise<AiRunView>;
   createPayment(
     shopId: string,
     repairOrderId: string,
@@ -318,6 +340,25 @@ export interface NotificationOperationsApi {
   ): Promise<NotificationOperation>;
 }
 
+export interface AiSettingsApi {
+  getAiSettings(shopId: string): Promise<AiSettingsView>;
+  updateAiSetting(
+    shopId: string,
+    capability: AiCapability,
+    input: {
+      enabled: boolean;
+      monthlyBudgetMicrousd: string;
+      maxRunCostMicrousd: string;
+      expectedLockVersion: number;
+    },
+  ): Promise<AiSettingsView>;
+  getAiAnalytics(
+    shopId: string,
+    filters: { from?: string; to?: string; capability?: AiCapability },
+    cursor?: string,
+  ): Promise<AiAnalyticsPage>;
+}
+
 export interface SessionCallbacks {
   onSession?(auth: AuthData): void;
   onSessionExpired?(): void;
@@ -335,7 +376,8 @@ export class BrowserIntakeApi
     RepairOrderWorkspaceApi,
     AiCustomerSummaryApi,
     StaffMembershipApi,
-    NotificationOperationsApi
+    NotificationOperationsApi,
+    AiSettingsApi
 {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
@@ -568,6 +610,42 @@ export class BrowserIntakeApi
     return response.data;
   }
 
+  async getAiSettings(shopId: string): Promise<AiSettingsView> {
+    const response = await this.request<DataResponse<AiSettingsView>>("/settings/ai", { shopId });
+    return response.data;
+  }
+
+  async updateAiSetting(
+    shopId: string,
+    capability: AiCapability,
+    input: {
+      enabled: boolean;
+      monthlyBudgetMicrousd: string;
+      maxRunCostMicrousd: string;
+      expectedLockVersion: number;
+    },
+  ): Promise<AiSettingsView> {
+    const response = await this.request<DataResponse<AiSettingsView>>(
+      `/settings/ai/${encodeURIComponent(capability)}`,
+      { method: "PATCH", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async getAiAnalytics(
+    shopId: string,
+    filters: { from?: string; to?: string; capability?: AiCapability },
+    cursor?: string,
+  ): Promise<AiAnalyticsPage> {
+    const params = new URLSearchParams();
+    if (filters.from) params.set("from", filters.from);
+    if (filters.to) params.set("to", filters.to);
+    if (filters.capability) params.set("capability", filters.capability);
+    if (cursor) params.set("cursor", cursor);
+    params.set("limit", "30");
+    return this.request<AiAnalyticsPage>(`/settings/ai/analytics?${params.toString()}`, { shopId });
+  }
+
   async searchCustomers(shopId: string, query: string): Promise<Customer[]> {
     const params = new URLSearchParams();
     if (query.trim()) params.set("query", query.trim());
@@ -783,6 +861,20 @@ export class BrowserIntakeApi
     return response.data;
   }
 
+  async createChecklistSuggestion(
+    shopId: string,
+    input: { repairOrderId: string; qcTemplateId: string; phase: "DIAGNOSIS" | "QC" },
+    idempotencyKey: string,
+  ): Promise<AiRunView> {
+    const response = await this.request<DataResponse<AiRunView>>("/ai/checklist-suggestions", {
+      method: "POST",
+      shopId,
+      idempotencyKey,
+      body: JSON.stringify(input),
+    });
+    return response.data;
+  }
+
   async getAiRun(shopId: string, aiRunId: string): Promise<AiRunView> {
     const response = await this.request<DataResponse<AiRunView>>(
       `/ai/runs/${encodeURIComponent(aiRunId)}`,
@@ -796,7 +888,8 @@ export class BrowserIntakeApi
     aiRunId: string,
     input: {
       outcome: AiReviewOutcome;
-      reviewedOutput?: CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput;
+      reviewedOutput?:
+        CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput | ChecklistSuggestionOutput;
       timeSavedSeconds?: number;
     },
   ): Promise<AiRunView> {

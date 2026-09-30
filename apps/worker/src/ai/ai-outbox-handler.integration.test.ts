@@ -2,6 +2,8 @@ import { AiCapability, AiRunStatus, MembershipRole, MembershipStatus } from "@pr
 import type { Prisma } from "@prisma/client";
 import { loadWorkspaceEnvironment } from "@repairflow/config/node";
 import {
+  CHECKLIST_SUGGESTION_PROMPT_VERSION,
+  CHECKLIST_SUGGESTION_SCHEMA_VERSION,
   CUSTOMER_SUMMARY_PROMPT_VERSION,
   CUSTOMER_SUMMARY_SCHEMA_VERSION,
   DEVICE_OCR_PROMPT_VERSION,
@@ -250,6 +252,77 @@ describe("AI outbox handler", () => {
         },
       }),
     ).resolves.toMatchObject({ reservedMicrousd: 0n, spentMicrousd: 20n });
+  });
+
+  it("persists only allowlisted checklist identifiers", async () => {
+    const allowedId = "11111111-1111-4111-8111-111111111111";
+    const fixture = await createFixture({
+      capability: AiCapability.CHECKLIST_SUGGESTION,
+      promptVersion: CHECKLIST_SUGGESTION_PROMPT_VERSION,
+      schemaVersion: CHECKLIST_SUGGESTION_SCHEMA_VERSION,
+      inputReference: {
+        phase: "QC",
+        deviceType: "PHONE",
+        reportedProblem: "Máy nóng khi sử dụng.",
+        allowedChecklistItems: [
+          { id: allowedId, label: "Kiểm tra nhiệt độ", isRequired: true, allowNa: false },
+        ],
+      },
+    });
+    const gateway = new ScriptedGateway(
+      successResult({
+        suggestedItemIds: [allowedId],
+        reasoningSummary: "Nên chú ý nhiệt độ theo triệu chứng đã ghi nhận.",
+        safetyWarnings: ["Nhân viên cần thực hiện đầy đủ quy trình của cửa hàng."],
+      }),
+    );
+    await handler(gateway).handle(fixture.event, NOW);
+    await expect(
+      prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+    ).resolves.toMatchObject({
+      status: AiRunStatus.SUCCEEDED,
+      output: {
+        suggestedItemIds: [allowedId],
+        reasoningSummary: "Nên chú ý nhiệt độ theo triệu chứng đã ghi nhận.",
+        safetyWarnings: ["Nhân viên cần thực hiện đầy đủ quy trình của cửa hàng."],
+      },
+    });
+  });
+
+  it("fails a checklist run when the provider invents an item identifier", async () => {
+    const fixture = await createFixture({
+      capability: AiCapability.CHECKLIST_SUGGESTION,
+      promptVersion: CHECKLIST_SUGGESTION_PROMPT_VERSION,
+      schemaVersion: CHECKLIST_SUGGESTION_SCHEMA_VERSION,
+      inputReference: {
+        phase: "QC",
+        deviceType: "PHONE",
+        reportedProblem: "Máy nóng khi sử dụng.",
+        allowedChecklistItems: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            label: "Kiểm tra nhiệt độ",
+            isRequired: true,
+            allowNa: false,
+          },
+        ],
+      },
+    });
+    const gateway = new ScriptedGateway(
+      successResult({
+        suggestedItemIds: ["22222222-2222-4222-8222-222222222222"],
+        reasoningSummary: "Nên chú ý nhiệt độ theo triệu chứng đã ghi nhận.",
+        safetyWarnings: [],
+      }),
+    );
+    await handler(gateway).handle(fixture.event, NOW);
+    await expect(
+      prisma.aiRun.findUniqueOrThrow({ where: { id: fixture.run.id } }),
+    ).resolves.toMatchObject({
+      status: AiRunStatus.FAILED,
+      errorCode: "AI_OUTPUT_INVALID",
+      output: null,
+    });
   });
 
   it("loads an authorized OCR image only in the worker and stores normalized output without media secrets", async () => {

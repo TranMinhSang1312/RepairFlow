@@ -111,6 +111,14 @@ export function ProtectedStaffLayout({ children }: { children: ReactNode }) {
           )}
           {membership.role === "OWNER" && (
             <Link
+              aria-current={pathname.startsWith("/settings/ai") ? "page" : undefined}
+              href={`/settings/ai?shopId=${encodeURIComponent(membership.shopId)}`}
+            >
+              AI
+            </Link>
+          )}
+          {membership.role === "OWNER" && (
+            <Link
               aria-current={pathname.startsWith("/settings/qc") ? "page" : undefined}
               href={`/settings/qc?shopId=${encodeURIComponent(membership.shopId)}`}
             >

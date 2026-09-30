@@ -972,6 +972,39 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
+  /api/v1/settings/ai/analytics:
+    get:
+      tags: [AI]
+      summary: Read privacy-safe daily AI aggregates for the active shop
+      operationId: getAiAnalytics
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - name: from
+          in: query
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          schema: {type: string, format: date}
+        - name: capability
+          in: query
+          schema: {$ref: '#/components/schemas/AiCapability'}
+        - name: cursor
+          in: query
+          schema: {type: string, maxLength: 512}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 30}
+      responses:
+        '200':
+          description: Daily aggregate metrics without run, order, user, prompt or output data
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiAnalyticsPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
   /api/v1/ai/device-ocr:
     post:
       tags: [AI]
@@ -1059,6 +1092,32 @@ paths:
       responses:
         '202':
           description: Customer-summary AI run queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiRunResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
+  /api/v1/ai/checklist-suggestions:
+    post:
+      tags: [AI]
+      summary: Queue checklist-item suggestions from an active server-owned template
+      operationId: queueChecklistSuggestion
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateChecklistSuggestionRequest'}
+      responses:
+        '202':
+          description: Checklist-suggestion AI run queued
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AiRunResponse'}
@@ -2364,7 +2423,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [capability, enabled, effectiveEnabled, monthlyBudgetMicrousd, maxRunCostMicrousd, lockVersion, updatedAt]
+        [capability, enabled, effectiveEnabled, monthlyBudgetMicrousd, maxRunCostMicrousd, lockVersion, updatedAt, currentPeriodReservedMicrousd, currentPeriodSpentMicrousd]
       properties:
         capability: {$ref: '#/components/schemas/AiCapability'}
         enabled: {type: boolean}
@@ -2373,6 +2432,8 @@ components:
         maxRunCostMicrousd: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
         lockVersion: {type: integer, minimum: 0}
         updatedAt: {type: [string, 'null'], format: date-time}
+        currentPeriodReservedMicrousd: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        currentPeriodSpentMicrousd: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
     AiSettingsResponse:
       type: object
       additionalProperties: false
@@ -2423,6 +2484,15 @@ components:
         tone: {type: string, enum: [CLEAR_NEUTRAL]}
         maxCharacters: {type: integer, minimum: 100, maximum: 800}
       description: At least one diagnosisId or workLogId is required. Source text and prompts are never accepted from the client.
+    CreateChecklistSuggestionRequest:
+      type: object
+      additionalProperties: false
+      required: [repairOrderId, qcTemplateId, phase]
+      properties:
+        repairOrderId: {$ref: '#/components/schemas/Uuid'}
+        qcTemplateId: {$ref: '#/components/schemas/Uuid'}
+        phase: {type: string, enum: [DIAGNOSIS, QC]}
+      description: The server resolves and redacts the device symptom and active template items; arbitrary notes or item lists are never accepted from the client.
     CreateDeviceOcrRequest:
       type: object
       additionalProperties: false
@@ -2512,6 +2582,54 @@ components:
           type: array
           maxItems: 20
           items: {type: string, maxLength: 500}
+    ChecklistSuggestionOutput:
+      type: object
+      additionalProperties: false
+      required: [suggestedItemIds, reasoningSummary, safetyWarnings]
+      properties:
+        suggestedItemIds:
+          type: array
+          uniqueItems: true
+          maxItems: 100
+          items: {$ref: '#/components/schemas/Uuid'}
+        reasoningSummary: {type: string, minLength: 1, maxLength: 1000}
+        safetyWarnings:
+          type: array
+          maxItems: 20
+          items: {type: string, minLength: 1, maxLength: 500}
+      description: IDs must be a subset of the active template snapshot. This draft never records PASS, FAIL or a domain transition.
+    AiAnalyticsRow:
+      type: object
+      additionalProperties: false
+      required: [date, capability, requestedCount, succeededCount, failedCount, reviewedCount, acceptedUnchangedCount, acceptedEditedCount, rejectedCount, p50LatencyMs, p95LatencyMs, inputTokens, outputTokens, estimatedCostMicrousd, averageEditDistancePermille, averageTimeSavedSeconds]
+      properties:
+        date: {type: string, format: date, description: UTC calendar day}
+        capability: {$ref: '#/components/schemas/AiCapability'}
+        requestedCount: {type: integer, minimum: 0}
+        succeededCount: {type: integer, minimum: 0}
+        failedCount: {type: integer, minimum: 0}
+        reviewedCount: {type: integer, minimum: 0}
+        acceptedUnchangedCount: {type: integer, minimum: 0}
+        acceptedEditedCount: {type: integer, minimum: 0}
+        rejectedCount: {type: integer, minimum: 0}
+        p50LatencyMs: {type: [number, 'null'], minimum: 0}
+        p95LatencyMs: {type: [number, 'null'], minimum: 0}
+        inputTokens: {type: integer, minimum: 0}
+        outputTokens: {type: integer, minimum: 0}
+        estimatedCostMicrousd: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        averageEditDistancePermille: {type: [number, 'null'], minimum: 0, maximum: 1000}
+        averageTimeSavedSeconds: {type: [number, 'null'], minimum: 0}
+    AiAnalyticsPage:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/AiAnalyticsRow'}}
+        meta:
+          type: object
+          additionalProperties: false
+          required: [nextCursor]
+          properties: {nextCursor: {type: [string, 'null']}}
     AiRunResponse:
       type: object
       additionalProperties: false

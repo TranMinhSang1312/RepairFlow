@@ -27,6 +27,7 @@ import {
   type IntakeAudioMediaLoader,
 } from "./capabilities/intake-draft/intake-audio-media-loader.js";
 import { sanitizeIntakeTranscript } from "./capabilities/intake-draft/intake-draft.js";
+import { sanitizeChecklistSuggestionInput } from "./capabilities/checklist-suggestion/checklist-suggestion.js";
 import type { TranscriptionGateway } from "../transcription/transcription-gateway.js";
 
 export interface AiOutboxHandlerOptions {
@@ -115,6 +116,13 @@ export class AiOutboxHandler {
         return;
       }
       providerInput = { allowedFields: reference.allowedFields };
+    } else if (run.capability === "CHECKLIST_SUGGESTION") {
+      const reference = sanitizeChecklistSuggestionInput(run.inputReference);
+      if (!reference) {
+        await this.finalizeRun(run, now, failed("AI_INPUT_PROHIBITED"));
+        return;
+      }
+      providerInput = reference;
     } else if (run.capability === "INTAKE_DRAFT") {
       const reference = parseIntakeDraftReference(run.inputReference);
       if (!reference) {

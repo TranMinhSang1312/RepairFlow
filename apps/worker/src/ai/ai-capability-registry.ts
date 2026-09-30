@@ -8,6 +8,7 @@ import {
 import { customerSummaryDefinition } from "./capabilities/customer-summary/customer-summary.js";
 import { deviceOcrDefinition } from "./capabilities/device-ocr/device-ocr.js";
 import { intakeDraftDefinition } from "./capabilities/intake-draft/intake-draft.js";
+import { checklistSuggestionDefinition } from "./capabilities/checklist-suggestion/checklist-suggestion.js";
 
 export const AI_PROMPT_VERSION = "spec-v0.1";
 export const AI_SCHEMA_VERSION = "1";
@@ -82,7 +83,13 @@ function defaultDefinitions(): AiCapabilityDefinition[] {
     validateOutput: (output, input) => validateCapabilityOutput(capability, output, input),
     confidence: capability === "DEVICE_OCR" ? ocrConfidence : () => null,
   }));
-  return [...foundation, customerSummaryDefinition, deviceOcrDefinition, intakeDraftDefinition];
+  return [
+    ...foundation,
+    customerSummaryDefinition,
+    deviceOcrDefinition,
+    intakeDraftDefinition,
+    checklistSuggestionDefinition,
+  ];
 }
 
 function validateCapabilityOutput(

@@ -99,10 +99,27 @@ function defaultOutput(request: AiGatewayRequest): unknown {
         uncertainties: ["Bản nháp được tạo bởi fake provider."],
       };
     case "CHECKLIST_SUGGESTION":
-      return { suggestedItemIds: [], reasoningSummary: "", safetyWarnings: [] };
+      return checklistSuggestionOutput(request.input);
     case "CUSTOMER_SUMMARY":
       return customerSummaryOutput(request.input);
   }
+}
+
+function checklistSuggestionOutput(input: unknown): unknown {
+  const items =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as { allowedChecklistItems?: unknown }).allowedChecklistItems
+      : null;
+  const first = Array.isArray(items) ? items[0] : null;
+  const id =
+    first && typeof first === "object" && !Array.isArray(first)
+      ? (first as { id?: unknown }).id
+      : null;
+  return {
+    suggestedItemIds: typeof id === "string" ? [id] : [],
+    reasoningSummary: "Ưu tiên mục kiểm tra phù hợp với lỗi khách báo.",
+    safetyWarnings: ["Nhân viên cần tự thực hiện và ghi nhận kết quả từng mục."],
+  };
 }
 
 function customerSummaryOutput(input: unknown): unknown {

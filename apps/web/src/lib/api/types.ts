@@ -63,6 +63,53 @@ export interface IntakeDraftOutput {
   uncertainties: string[];
 }
 
+export interface ChecklistSuggestionOutput {
+  suggestedItemIds: string[];
+  reasoningSummary: string;
+  safetyWarnings: string[];
+}
+
+export interface AiCapabilitySetting {
+  capability: AiCapability;
+  enabled: boolean;
+  effectiveEnabled: boolean;
+  monthlyBudgetMicrousd: string;
+  maxRunCostMicrousd: string;
+  lockVersion: number;
+  updatedAt: string | null;
+  currentPeriodReservedMicrousd: string;
+  currentPeriodSpentMicrousd: string;
+}
+
+export interface AiSettingsView {
+  globalEnabled: boolean;
+  capabilities: AiCapabilitySetting[];
+}
+
+export interface AiAnalyticsRow {
+  date: string;
+  capability: AiCapability;
+  requestedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  reviewedCount: number;
+  acceptedUnchangedCount: number;
+  acceptedEditedCount: number;
+  rejectedCount: number;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostMicrousd: string;
+  averageEditDistancePermille: number | null;
+  averageTimeSavedSeconds: number | null;
+}
+
+export interface AiAnalyticsPage {
+  data: AiAnalyticsRow[];
+  meta: { nextCursor: string | null };
+}
+
 export type CreateIntakeDraftInput = {
   deviceType: DeviceType;
   language: "vi";
@@ -84,7 +131,8 @@ export interface AiRunView {
   status: AiRunStatus;
   promptVersion: string;
   schemaVersion: string;
-  output: CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput | null;
+  output:
+    CustomerSummaryOutput | DeviceOcrOutput | IntakeDraftOutput | ChecklistSuggestionOutput | null;
   confidence: number | null;
   errorCode: string | null;
   review: {
