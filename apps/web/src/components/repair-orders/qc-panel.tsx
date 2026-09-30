@@ -14,6 +14,7 @@ import type {
   QcTemplateItem,
   RepairOrderDetail,
 } from "@/lib/api/types";
+import { AiChecklistSuggestion } from "./ai-checklist-suggestion";
 
 interface QcPanelProps {
   api: RepairOrderWorkspaceApi;
@@ -164,6 +165,7 @@ export function QcPanel({
   const [busy, setBusy] = useState<"" | "submit" | "ready">("");
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewRequired, setReviewRequired] = useState(false);
+  const [aiSuggestedItemIds, setAiSuggestedItemIds] = useState<Set<string>>(new Set());
   const feedbackRef = useRef<HTMLParagraphElement | null>(null);
   const reviewButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -206,6 +208,7 @@ export function QcPanel({
 
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
   useEffect(() => {
+    setAiSuggestedItemIds(new Set());
     if (!selectedTemplate) {
       setAnswers({});
       return;
@@ -251,6 +254,7 @@ export function QcPanel({
     setFailureNotes("");
     setFieldErrors({});
     setReviewRequired(false);
+    setAiSuggestedItemIds(new Set());
     submitCommand.current = undefined;
   }
 
@@ -657,15 +661,27 @@ export function QcPanel({
                 )}
               </label>
 
+              <AiChecklistSuggestion
+                api={api}
+                shopId={shopId}
+                repairOrderId={order.id}
+                template={selectedTemplate}
+                onApply={(itemIds) => setAiSuggestedItemIds(new Set(itemIds))}
+              />
+
               <div className="qc-checklist">
                 {selectedTemplate.items.map((item) => {
                   const answer = answers[item.id] ?? { result: "", note: "", evidence: [] };
                   return (
-                    <fieldset className="qc-check-item" key={item.id}>
+                    <fieldset
+                      className={`qc-check-item${aiSuggestedItemIds.has(item.id) ? " qc-check-item-ai" : ""}`}
+                      key={item.id}
+                    >
                       <legend>
                         <span>{item.sortOrder}</span>
                         {item.label}
                         {item.isRequired && <strong> Bắt buộc</strong>}
+                        {aiSuggestedItemIds.has(item.id) && <em> AI gợi ý kiểm tra</em>}
                       </legend>
                       <div
                         aria-describedby={

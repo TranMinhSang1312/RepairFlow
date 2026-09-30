@@ -25,13 +25,27 @@ export class AiSettingsService {
   ) {}
 
   async list(tenant: TenantContext): Promise<AiSettingsResponse> {
-    const records = await this.repository.listSettings(tenant.shopId);
+    const periodStart = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+    );
+    const [records, usageRecords] = await Promise.all([
+      this.repository.listSettings(tenant.shopId),
+      this.repository.listUsagePeriods(tenant.shopId, periodStart),
+    ]);
     const byCapability = new Map(records.map((record) => [record.capability, record]));
+    const usageByCapability = new Map(
+      usageRecords.map((record) => [record.capability, record] as const),
+    );
     return {
       data: {
         globalEnabled: this.globalEnabled,
         capabilities: Object.values(AiCapability).map((capability) =>
-          toAiSettingView(capability, byCapability.get(capability), this.globalEnabled),
+          toAiSettingView(
+            capability,
+            byCapability.get(capability),
+            this.globalEnabled,
+            usageByCapability.get(capability),
+          ),
         ),
       },
     };

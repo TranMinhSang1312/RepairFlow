@@ -4,6 +4,7 @@ import { parseApiEnvironment } from "@repairflow/config";
 import { IdempotencyModule } from "../../common/idempotency/idempotency.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { AiCapabilitiesController } from "./ai-capabilities.controller.js";
+import { AiAnalyticsService } from "./ai-analytics.service.js";
 import { AiEnqueueService } from "./ai-enqueue.service.js";
 import { AiRepository } from "./ai.repository.js";
 import { AiRunsController } from "./ai-runs.controller.js";
@@ -23,6 +24,9 @@ import { DeviceOcrService } from "./capabilities/device-ocr/device-ocr.service.j
 import { IntakeDraftController } from "./capabilities/intake-draft/intake-draft.controller.js";
 import { IntakeDraftRepository } from "./capabilities/intake-draft/intake-draft.repository.js";
 import { IntakeDraftService } from "./capabilities/intake-draft/intake-draft.service.js";
+import { ChecklistSuggestionController } from "./capabilities/checklist-suggestion/checklist-suggestion.controller.js";
+import { ChecklistSuggestionRepository } from "./capabilities/checklist-suggestion/checklist-suggestion.repository.js";
+import { ChecklistSuggestionService } from "./capabilities/checklist-suggestion/checklist-suggestion.service.js";
 import { CustomerSummaryController } from "./capabilities/customer-summary/customer-summary.controller.js";
 import { CustomerSummaryRepository } from "./capabilities/customer-summary/customer-summary.repository.js";
 import { CustomerSummaryService } from "./capabilities/customer-summary/customer-summary.service.js";
@@ -36,9 +40,11 @@ import { CustomerSummaryService } from "./capabilities/customer-summary/customer
     CustomerSummaryController,
     DeviceOcrController,
     IntakeDraftController,
+    ChecklistSuggestionController,
   ],
   providers: [
     AiRepository,
+    AiAnalyticsService,
     AiSettingsService,
     AiRunsService,
     AiEnqueueService,
@@ -48,6 +54,8 @@ import { CustomerSummaryService } from "./capabilities/customer-summary/customer
     DeviceOcrService,
     IntakeDraftRepository,
     IntakeDraftService,
+    ChecklistSuggestionRepository,
+    ChecklistSuggestionService,
     {
       provide: AI_GLOBAL_ENABLED,
       useFactory: () => parseApiEnvironment(process.env).AI_ENABLED,

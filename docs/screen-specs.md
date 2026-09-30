@@ -232,4 +232,20 @@ Owner and receptionist can open the staff list. Only the owner sees invitation a
 - QC template management.
 - Owner notification operations: filter failed/dead-letter jobs, inspect safe metadata, and request an asynchronous retry. The screen never displays payloads, destinations, raw tokens, provider response data, or secrets.
 
+## S10 — Owner AI settings and analytics
+
+- OWNER chooses one of their active shops, sees global availability, and manages the four
+  capability flags plus monthly/per-run budgets with optimistic versions.
+- Each capability explains that output is a draft and that provider credentials are configured only
+  on the server. The screen never displays or accepts an API key.
+- A version conflict reloads the latest server version while retaining the owner's proposed values
+  for review before another save.
+- Current UTC-month reserved/spent micro-USD is visible for each capability.
+- Daily aggregate analytics support date and capability URL filters, cursor pagination, and
+  loading/empty/error/stale states. Existing rows remain visible if a refresh fails.
+- Analytics never display AI content, run/order/user/customer identifiers, provider body, raw error,
+  destination, token, or secret.
+- Non-owners do not see the AI settings navigation item and a direct visit shows an access denial.
+- Layout and all actions remain usable at 360 px.
+
 Changing templates or default terms never rewrites historical snapshots.

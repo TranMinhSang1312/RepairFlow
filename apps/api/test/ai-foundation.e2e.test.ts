@@ -228,6 +228,11 @@ describe("RF-060 AI settings and run review API", () => {
           .get("/api/v1/settings/ai")
           .set("Authorization", `Bearer ${actor.token}`)
           .set("X-Shop-Id", shopId),
+      analytics: (query = "") =>
+        request(app.getHttpServer())
+          .get(`/api/v1/settings/ai/analytics${query}`)
+          .set("Authorization", `Bearer ${actor.token}`)
+          .set("X-Shop-Id", shopId),
       updateSetting: (
         capability: AiCapability,
         body: {
@@ -262,6 +267,13 @@ describe("RF-060 AI settings and run review API", () => {
     repairOrderId?: string | null;
     status?: AiRunStatus;
     output?: Record<string, unknown> | null;
+    capability?: AiCapability;
+    createdAt?: Date;
+    latencyMs?: number;
+    estimatedCostMicrousd?: bigint;
+    reviewOutcome?: AiReviewOutcome;
+    editDistancePermille?: number;
+    timeSavedSeconds?: number;
   }) {
     const status = options?.status ?? AiRunStatus.SUCCEEDED;
     const shopId = options?.shopId ?? fixture.shopAId;
@@ -276,7 +288,7 @@ describe("RF-060 AI settings and run review API", () => {
         shopId,
         repairOrderId:
           options?.repairOrderId === undefined ? fixture.assignedOrderId : options.repairOrderId,
-        capability: AiCapability.CUSTOMER_SUMMARY,
+        capability: options?.capability ?? AiCapability.CUSTOMER_SUMMARY,
         status,
         provider: "deepseek",
         model: "provider-model-must-not-leak",
@@ -291,9 +303,33 @@ describe("RF-060 AI settings and run review API", () => {
         inputTokens: 101,
         outputTokens: 23,
         reservedCostMicrousd: 900n,
-        estimatedCostMicrousd: 450n,
+        estimatedCostMicrousd: options?.estimatedCostMicrousd ?? 450n,
         priceTableVersion: "deepseek-price-v1",
-        latencyMs: 125,
+        latencyMs: options?.latencyMs ?? 125,
+        ...(options?.reviewOutcome
+          ? {
+              reviewOutcome: options.reviewOutcome,
+              reviewedByUserId:
+                options.requestedByUserId ??
+                (shopId === fixture.shopBId ? fixture.ownerB.userId : fixture.ownerA.userId),
+              reviewedAt: options.createdAt ?? new Date(),
+              ...(options.reviewOutcome === AiReviewOutcome.REJECTED
+                ? {}
+                : {
+                    acceptedByUserId:
+                      options.requestedByUserId ??
+                      (shopId === fixture.shopBId ? fixture.ownerB.userId : fixture.ownerA.userId),
+                    acceptedAt: options.createdAt ?? new Date(),
+                  }),
+              ...(options.editDistancePermille === undefined
+                ? {}
+                : { editDistancePermille: options.editDistancePermille }),
+              ...(options.timeSavedSeconds === undefined
+                ? {}
+                : { timeSavedSeconds: options.timeSavedSeconds }),
+            }
+          : {}),
+        ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
         ...(status === AiRunStatus.QUEUED ? {} : { startedAt: new Date() }),
         ...(status === AiRunStatus.SUCCEEDED || status === AiRunStatus.FAILED
           ? { completedAt: new Date() }
@@ -317,6 +353,8 @@ describe("RF-060 AI settings and run review API", () => {
             maxRunCostMicrousd: "0",
             lockVersion: 0,
             updatedAt: null,
+            currentPeriodReservedMicrousd: "0",
+            currentPeriodSpentMicrousd: "0",
           }),
         ),
       ),
@@ -377,6 +415,140 @@ describe("RF-060 AI settings and run review API", () => {
     });
     expect(persisted.lockVersion).toBe(2);
     expect([6000000n, 7000000n]).toContain(persisted.monthlyBudgetMicrousd);
+  });
+
+  it("returns current UTC-month reserved and spent usage with owner settings", async () => {
+    const now = new Date();
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    await prisma.aiUsagePeriod.upsert({
+      where: {
+        shopId_capability_periodStart: {
+          shopId: fixture.shopAId,
+          capability: AiCapability.DEVICE_OCR,
+          periodStart,
+        },
+      },
+      update: { reservedMicrousd: 1_200n, spentMicrousd: 3_400n },
+      create: {
+        shopId: fixture.shopAId,
+        capability: AiCapability.DEVICE_OCR,
+        periodStart,
+        reservedMicrousd: 1_200n,
+        spentMicrousd: 3_400n,
+      },
+    });
+    const response = await authenticated(fixture.ownerA).settings().expect(200);
+    expect(response.body.data.capabilities).toContainEqual(
+      expect.objectContaining({
+        capability: AiCapability.DEVICE_OCR,
+        currentPeriodReservedMicrousd: "1200",
+        currentPeriodSpentMicrousd: "3400",
+      }),
+    );
+  });
+
+  it("returns owner-only, tenant-isolated aggregate analytics with stable cursors", async () => {
+    const day20 = new Date("2026-09-20T09:00:00.000Z");
+    const day21 = new Date("2026-09-21T10:00:00.000Z");
+    await Promise.all([
+      createRun({
+        createdAt: day21,
+        latencyMs: 100,
+        estimatedCostMicrousd: 300n,
+        reviewOutcome: AiReviewOutcome.ACCEPTED_UNCHANGED,
+        editDistancePermille: 0,
+        timeSavedSeconds: 60,
+      }),
+      createRun({
+        createdAt: day21,
+        status: AiRunStatus.FAILED,
+        output: null,
+        latencyMs: 200,
+        estimatedCostMicrousd: 0n,
+      }),
+      createRun({
+        capability: AiCapability.DEVICE_OCR,
+        createdAt: day20,
+        status: AiRunStatus.REJECTED,
+        output: null,
+        latencyMs: 300,
+        estimatedCostMicrousd: 200n,
+        reviewOutcome: AiReviewOutcome.REJECTED,
+      }),
+      createRun({
+        shopId: fixture.shopBId,
+        requestedByUserId: fixture.ownerB.userId,
+        repairOrderId: null,
+        createdAt: day21,
+        output: { marker: "shop-b-private-output" },
+      }),
+    ]);
+
+    await authenticated(fixture.receptionistA)
+      .analytics("?from=2026-09-20&to=2026-09-21")
+      .expect(403);
+    await authenticated(fixture.technicianA)
+      .analytics("?from=2026-09-20&to=2026-09-21")
+      .expect(403);
+    await authenticated(fixture.ownerA, fixture.shopBId)
+      .analytics("?from=2026-09-20&to=2026-09-21")
+      .expect(404);
+
+    const first = await authenticated(fixture.ownerA)
+      .analytics("?from=2026-09-20&to=2026-09-21&limit=1")
+      .expect(200);
+    expect(first.body.data).toEqual([
+      expect.objectContaining({
+        date: "2026-09-21",
+        capability: AiCapability.CUSTOMER_SUMMARY,
+        requestedCount: 2,
+        succeededCount: 1,
+        failedCount: 1,
+        reviewedCount: 1,
+        acceptedUnchangedCount: 1,
+        estimatedCostMicrousd: "300",
+      }),
+    ]);
+    expect(first.body.meta.nextCursor).toEqual(expect.any(String));
+    const second = await authenticated(fixture.ownerA)
+      .analytics(
+        `?from=2026-09-20&to=2026-09-21&limit=1&cursor=${encodeURIComponent(first.body.meta.nextCursor as string)}`,
+      )
+      .expect(200);
+    expect(second.body.data).toEqual([
+      expect.objectContaining({
+        date: "2026-09-20",
+        capability: AiCapability.DEVICE_OCR,
+        requestedCount: 1,
+        succeededCount: 1,
+        rejectedCount: 1,
+      }),
+    ]);
+    expect(second.body.meta.nextCursor).toBeNull();
+
+    const filtered = await authenticated(fixture.ownerA)
+      .analytics("?from=2026-09-20&to=2026-09-21&capability=DEVICE_OCR&limit=30")
+      .expect(200);
+    expect(filtered.body.data).toHaveLength(1);
+    const serialized = JSON.stringify([first.body, second.body, filtered.body]);
+    for (const prohibited of [
+      "shop-b-private-output",
+      "private-input-reference",
+      "provider-model",
+      fixture.assignedOrderId,
+      fixture.ownerA.userId,
+    ]) {
+      expect(serialized).not.toContain(prohibited);
+    }
+
+    const empty = await authenticated(fixture.ownerA)
+      .analytics("?from=2026-01-01&to=2026-01-02")
+      .expect(200);
+    expect(empty.body).toEqual({ data: [], meta: { nextCursor: null } });
+    await authenticated(fixture.ownerA).analytics("?from=2026-01-01&to=2026-04-30").expect(422);
+    await authenticated(fixture.ownerA)
+      .analytics("?from=2026-09-20&to=2026-09-21&cursor=invalid")
+      .expect(422);
   });
 
   it("isolates run reads by tenant and active technician assignment", async () => {

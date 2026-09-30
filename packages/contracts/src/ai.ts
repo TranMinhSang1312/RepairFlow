@@ -17,6 +17,10 @@ export const INTAKE_DRAFT_SOURCE_TYPES = ["TEXT", "TRANSCRIPT", "AUDIO"] as cons
 export type IntakeDraftSourceType = (typeof INTAKE_DRAFT_SOURCE_TYPES)[number];
 export const INTAKE_DRAFT_LANGUAGES = ["vi"] as const;
 export type IntakeDraftLanguage = (typeof INTAKE_DRAFT_LANGUAGES)[number];
+export const CHECKLIST_SUGGESTION_PROMPT_VERSION = "checklist-suggestion-v1";
+export const CHECKLIST_SUGGESTION_SCHEMA_VERSION = "1";
+export const CHECKLIST_SUGGESTION_PHASES = ["DIAGNOSIS", "QC"] as const;
+export type ChecklistSuggestionPhase = (typeof CHECKLIST_SUGGESTION_PHASES)[number];
 export const DEVICE_OCR_FIELDS = ["brand", "model", "serialNumber", "imei"] as const;
 export type DeviceOcrField = (typeof DEVICE_OCR_FIELDS)[number];
 
@@ -39,6 +43,12 @@ export interface IntakeDraftOutput {
   accessories: string[];
   customerClaims: string[];
   uncertainties: string[];
+}
+
+export interface ChecklistSuggestionOutput {
+  suggestedItemIds: string[];
+  reasoningSummary: string;
+  safetyWarnings: string[];
 }
 export const CUSTOMER_SUMMARY_TONES = ["CLEAR_NEUTRAL"] as const;
 export type CustomerSummaryTone = (typeof CUSTOMER_SUMMARY_TONES)[number];
@@ -117,11 +127,11 @@ export const AI_OUTPUT_SCHEMAS: Readonly<Record<AiCapabilityName, JsonSchema>> =
         maxItems: 100,
         items: { type: "string", format: "uuid" },
       },
-      reasoningSummary: { type: "string", maxLength: 1000 },
+      reasoningSummary: { type: "string", minLength: 1, maxLength: 1000 },
       safetyWarnings: {
         type: "array",
         maxItems: 20,
-        items: { type: "string", maxLength: 500 },
+        items: { type: "string", minLength: 1, maxLength: 500 },
       },
     },
   },
@@ -262,8 +272,10 @@ export function isValidAiOutput(capability: AiCapabilityName, value: unknown): b
     case "CHECKLIST_SUGGESTION": {
       if (
         !hasExactKeys(value, ["reasoningSummary", "safetyWarnings", "suggestedItemIds"]) ||
-        !boundedString(value.reasoningSummary, 0, 1000) ||
-        !boundedStringArray(value.safetyWarnings, 20, 500) ||
+        !validChecklistText(value.reasoningSummary, 1000) ||
+        !Array.isArray(value.safetyWarnings) ||
+        value.safetyWarnings.length > 20 ||
+        !value.safetyWarnings.every((entry) => validChecklistText(entry, 500)) ||
         !Array.isArray(value.suggestedItemIds) ||
         value.suggestedItemIds.length > 100 ||
         !value.suggestedItemIds.every(
@@ -286,6 +298,20 @@ export function isValidAiOutput(capability: AiCapabilityName, value: unknown): b
       return new Set(value.claimsUsed).size === value.claimsUsed.length;
     }
   }
+}
+
+const CHECKLIST_UNSAFE_TEXT = /<\/?[a-z][^>]*>|(?:https?:\/\/|www\.)\S+/iu;
+const CHECKLIST_PROHIBITED_CLAIM =
+  /\b(?:diagnos(?:is|ed)|price|cost|deadline|guaranteed?|passed?|failed?)\b|(?:chẩn\s*đoán|giá\s*(?:sửa|là)|chi\s*phí|cam\s*kết|chắc\s*chắn|đã\s*(?:đạt|không\s*đạt)|kết\s*quả\s*(?:đạt|không\s*đạt))/iu;
+
+function validChecklistText(value: unknown, maximum: number): value is string {
+  return (
+    boundedString(value, 1, maximum) &&
+    value === normalizePlainText(value) &&
+    !hasControlCharacter(value) &&
+    !CHECKLIST_UNSAFE_TEXT.test(value) &&
+    !CHECKLIST_PROHIBITED_CLAIM.test(value)
+  );
 }
 
 const INTAKE_UNSAFE_TEXT =

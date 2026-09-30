@@ -8,6 +8,8 @@ export interface AiCapabilitySettingView {
   maxRunCostMicrousd: string;
   lockVersion: number;
   updatedAt: string | null;
+  currentPeriodReservedMicrousd: string;
+  currentPeriodSpentMicrousd: string;
 }
 
 export interface AiSettingsResponse {
@@ -41,6 +43,30 @@ export interface AiRunResponse {
   data: AiRunView;
 }
 
+export interface AiAnalyticsView {
+  date: string;
+  capability: AiCapability;
+  requestedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  reviewedCount: number;
+  acceptedUnchangedCount: number;
+  acceptedEditedCount: number;
+  rejectedCount: number;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostMicrousd: string;
+  averageEditDistancePermille: number | null;
+  averageTimeSavedSeconds: number | null;
+}
+
+export interface AiAnalyticsResponse {
+  data: AiAnalyticsView[];
+  meta: { nextCursor: string | null };
+}
+
 export type AiCapabilitySettingRecord = Pick<
   AiCapabilitySetting,
   | "capability"
@@ -55,6 +81,7 @@ export function toAiSettingView(
   capability: AiCapability,
   record: AiCapabilitySettingRecord | undefined,
   globalEnabled: boolean,
+  usage?: { reservedMicrousd: bigint; spentMicrousd: bigint },
 ): AiCapabilitySettingView {
   return {
     capability,
@@ -64,6 +91,8 @@ export function toAiSettingView(
     maxRunCostMicrousd: String(record?.maxRunCostMicrousd ?? 0n),
     lockVersion: record?.lockVersion ?? 0,
     updatedAt: record?.updatedAt.toISOString() ?? null,
+    currentPeriodReservedMicrousd: String(usage?.reservedMicrousd ?? 0n),
+    currentPeriodSpentMicrousd: String(usage?.spentMicrousd ?? 0n),
   };
 }
 
