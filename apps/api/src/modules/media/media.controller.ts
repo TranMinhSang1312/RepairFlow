@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs runtime constructors for DI and validation metadata. */
 
-import { Body, Controller, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 
 import { AccessTokenGuard } from "../../common/auth/access-token.guard.js";
 import { Capability } from "../../common/permissions/capability.js";
@@ -37,5 +37,15 @@ export class OrderMediaController {
     @Body() dto: PresignOrderMediaDto,
   ) {
     return this.mediaService.presignOrder(tenant, repairOrderId, dto);
+  }
+
+  @Get(":mediaAssetId/download")
+  @RequireCapabilities(Capability.REPAIR_ORDER_READ_ASSIGNED)
+  download(
+    @CurrentTenant() tenant: TenantContext,
+    @Param("repairOrderId") repairOrderId: string,
+    @Param("mediaAssetId") mediaAssetId: string,
+  ) {
+    return this.mediaService.presignDownload(tenant, repairOrderId, mediaAssetId);
   }
 }

@@ -8,6 +8,11 @@ export interface PresignPutInput {
   expiresAt: Date;
 }
 
+export interface PresignGetInput {
+  objectKey: string;
+  expiresAt: Date;
+}
+
 export interface StoredObjectMetadata {
   byteSize: number;
   mimeType: string | null;
@@ -16,6 +21,7 @@ export interface StoredObjectMetadata {
 
 export interface ObjectStoragePort {
   presignPut(input: PresignPutInput): Promise<string>;
+  presignGet?(input: PresignGetInput): Promise<string>;
   head(objectKey: string): Promise<StoredObjectMetadata | null>;
   delete(objectKey: string): Promise<void>;
 }

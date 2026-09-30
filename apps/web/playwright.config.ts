@@ -24,6 +24,11 @@ export default defineConfig({
     {
       command: "pnpm --filter @repairflow/api dev",
       url: "http://127.0.0.1:3001/api/v1/health",
+      env: {
+        RATE_LIMIT_NAMESPACE: process.env.GITHUB_RUN_ID
+          ? `playwright-${process.env.GITHUB_RUN_ID}`
+          : `playwright-${process.pid}`,
+      },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

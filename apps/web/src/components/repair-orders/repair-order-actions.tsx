@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type { ActiveTechnician, Membership, RepairOrderDetail } from "@/lib/api/types";
 
@@ -104,7 +105,8 @@ export function RepairOrderActions({
           </strong>
           {order.activeAssignment && (
             <small>
-              Phân công lúc {new Date(order.activeAssignment.assignedAt).toLocaleString("vi-VN")}
+              Phân công lúc{" "}
+              {formatShopDateTime(order.activeAssignment.assignedAt, membership.timezone)}
             </small>
           )}
         </div>

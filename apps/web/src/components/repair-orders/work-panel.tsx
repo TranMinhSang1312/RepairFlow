@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type {
   ApprovedScopeItem,
@@ -68,11 +69,6 @@ function money(value: number | null): string {
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-function dateTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Không xác định" : date.toLocaleString("vi-VN");
 }
 
 function quantity(value: number, unit: "EACH" | "HOUR"): string {
@@ -666,7 +662,7 @@ export function WorkPanel({
                         ? `Đính chính · ${LOG_LABELS[log.effectiveType]}`
                         : LOG_LABELS[log.effectiveType]}
                     </strong>
-                    <time>{dateTime(log.createdAt)}</time>
+                    <time>{formatShopDateTime(log.createdAt, membership.timezone)}</time>
                   </div>
                   <p>{log.content}</p>
                   <small>

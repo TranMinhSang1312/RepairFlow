@@ -17,6 +17,8 @@ tags:
     description: Shop-scoped customer records.
   - name: Devices
     description: Customer devices and identifiers.
+  - name: Settings
+    description: Owner-only shop and branch configuration.
   - name: Repair orders
     description: Intake, assignment, workflow state, and media.
   - name: Quotes
@@ -41,6 +43,7 @@ paths:
       security: []
       responses:
         '200': {description: API process is live, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
 
   /api/v1/health/live:
     get:
@@ -50,6 +53,7 @@ paths:
       security: []
       responses:
         '200': {description: API process is live, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
 
   /api/v1/health/ready:
     get:
@@ -59,6 +63,7 @@ paths:
       security: []
       responses:
         '200': {description: API is ready, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
         '503': {description: API dependency is unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
 
   /api/v1/auth/register-owner:
@@ -86,7 +91,6 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
-        '429': {$ref: '#/components/responses/RateLimited'}
 
   /api/v1/auth/login:
     post:
@@ -113,7 +117,6 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422': {$ref: '#/components/responses/ValidationError'}
-        '429': {$ref: '#/components/responses/RateLimited'}
 
   /api/v1/auth/refresh:
     post:
@@ -224,6 +227,32 @@ paths:
               schema: {$ref: '#/components/schemas/CustomerResponse'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
+  /api/v1/customers/{customerId}:
+    patch:
+      tags: [Customers]
+      summary: Update an active customer
+      operationId: updateCustomer
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UpdateCustomerRequest'}}}
+      responses:
+        '200': {description: Customer updated, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [Customers]
+      summary: Archive a customer and active devices
+      operationId: archiveCustomer
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200': {description: Customer archived, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/customers/{customerId}/devices:
     get:
       tags: [Devices]
@@ -266,6 +295,40 @@ paths:
               schema: {$ref: '#/components/schemas/DeviceResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/customers/{customerId}/devices/{deviceId}:
+    patch:
+      tags: [Devices]
+      summary: Update an active device
+      operationId: updateDevice
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/CustomerId'
+        - name: deviceId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UpdateDeviceRequest'}}}
+      responses:
+        '200': {description: Device updated, content: {application/json: {schema: {$ref: '#/components/schemas/DeviceResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [Devices]
+      summary: Archive a device
+      operationId: archiveDevice
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/CustomerId'
+        - name: deviceId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200': {description: Device archived, content: {application/json: {schema: {$ref: '#/components/schemas/DeviceResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
 
   /api/v1/repair-orders:
     get:
@@ -375,6 +438,23 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/PresignMediaResponse'}
         '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/v1/repair-orders/{repairOrderId}/media/{mediaAssetId}/download:
+    get:
+      tags: [Repair orders]
+      summary: Create a short-lived signed download URL for private media
+      operationId: downloadRepairOrderMedia
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/RepairOrderId'
+        - name: mediaAssetId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200': {description: Signed private download, content: {application/json: {schema: {$ref: '#/components/schemas/DownloadMediaResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
 
   /api/v1/repair-orders/{repairOrderId}/assignments:
     post:
@@ -820,7 +900,7 @@ paths:
       parameters: [{$ref: '#/components/parameters/StaffInvitationToken'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptNewStaffInvitationRequest'}}}}
       responses:
-        '201': {description: Identity, membership and session created atomically, content: {application/json: {schema: {$ref: '#/components/schemas/AuthResponse'}}}}
+        '201': {description: 'Identity, membership and session created atomically', content: {application/json: {schema: {$ref: '#/components/schemas/AuthResponse'}}}}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '410': {$ref: '#/components/responses/PublicLinkExpired'}
@@ -1175,6 +1255,94 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
+  /api/v1/settings/shop:
+    get:
+      tags: [Settings]
+      summary: Read shop settings and branches
+      operationId: getShopSettings
+      parameters: [{$ref: '#/components/parameters/ShopHeader'}]
+      responses:
+        '200': {description: Shop settings, content: {application/json: {schema: {$ref: '#/components/schemas/ShopSettingsResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    patch:
+      tags: [Settings]
+      summary: Update shop settings
+      operationId: updateShopSettings
+      parameters: [{$ref: '#/components/parameters/ShopHeader'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UpdateShopSettingsRequest'}}}
+      responses:
+        '200': {description: Updated shop settings, content: {application/json: {schema: {$ref: '#/components/schemas/ShopSettingsResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    post:
+      tags: [Settings]
+      summary: Create a shop branch
+      operationId: createShopBranch
+      parameters: [{$ref: '#/components/parameters/ShopHeader'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CreateBranchRequest'}}}
+      responses:
+        '201': {description: Branch created, content: {application/json: {schema: {$ref: '#/components/schemas/BranchResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /api/v1/settings/shop/branches/{branchId}:
+    patch:
+      tags: [Settings]
+      summary: Update or deactivate a shop branch
+      operationId: updateShopBranch
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - name: branchId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UpdateBranchRequest'}}}
+      responses:
+        '200': {description: Updated branch, content: {application/json: {schema: {$ref: '#/components/schemas/BranchResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /api/v1/operations/audit-logs:
+    get:
+      tags: [Operations]
+      summary: List safe owner-visible audit metadata
+      operationId: listAuditLogs
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - $ref: '#/components/parameters/Cursor'
+        - {name: action, in: query, schema: {type: string}}
+        - {name: entityType, in: query, schema: {type: string}}
+        - {name: actorUserId, in: query, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200': {description: Safe audit page, content: {application/json: {schema: {$ref: '#/components/schemas/AuditLogPageResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/operations/audit-logs/{auditLogId}:
+    get:
+      tags: [Operations]
+      summary: Read one safe audit entry
+      operationId: getAuditLog
+      parameters:
+        - $ref: '#/components/parameters/ShopHeader'
+        - name: auditLogId
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200': {description: Safe audit entry, content: {application/json: {schema: {$ref: '#/components/schemas/AuditLogResponse'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1245,6 +1413,9 @@ components:
       schema: {type: string, minLength: 32, maxLength: 256}
 
   responses:
+    BadRequest:
+      description: The request is malformed
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
     Unauthorized:
       description: Authentication required or invalid
       content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
@@ -1307,6 +1478,92 @@ components:
     MembershipRole:
       type: string
       enum: [OWNER, RECEPTIONIST, TECHNICIAN]
+    Branch:
+      type: object
+      required: [id, name, address, isActive, lockVersion]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        address: {type: [string, 'null']}
+        isActive: {type: boolean}
+        lockVersion: {type: integer, minimum: 0}
+    ShopSettings:
+      type: object
+      required: [id, name, timezone, contactPhone, orderCodePrefix, intakePhotoMinimum, defaultQuoteExpiryHours, defaultWarrantyTerms, lockVersion, branches]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        timezone: {type: string}
+        contactPhone: {type: [string, 'null']}
+        orderCodePrefix: {type: string}
+        intakePhotoMinimum: {type: integer, minimum: 0}
+        defaultQuoteExpiryHours: {type: integer, minimum: 1}
+        defaultWarrantyTerms: {type: [string, 'null']}
+        lockVersion: {type: integer, minimum: 0}
+        branches: {type: array, items: {$ref: '#/components/schemas/Branch'}}
+    ShopSettingsResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/ShopSettings'}}
+    UpdateShopSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedLockVersion]
+      properties:
+        expectedLockVersion: {type: integer, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 150}
+        timezone: {type: string, maxLength: 100}
+        contactPhone: {type: [string, 'null'], maxLength: 30}
+        orderCodePrefix: {type: string, pattern: '^[A-Z0-9]{1,8}$'}
+        intakePhotoMinimum: {type: integer, minimum: 0, maximum: 20}
+        defaultQuoteExpiryHours: {type: integer, minimum: 1, maximum: 720}
+        defaultWarrantyTerms: {type: [string, 'null'], maxLength: 4000}
+    CreateBranchRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 150}
+        address: {type: [string, 'null'], maxLength: 500}
+    UpdateBranchRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedLockVersion]
+      properties:
+        expectedLockVersion: {type: integer, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 150}
+        address: {type: [string, 'null'], maxLength: 500}
+        isActive: {type: boolean}
+    BranchResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/Branch'}}
+    AuditLog:
+      type: object
+      required: [id, actorUserId, action, entityType, entityId, before, after, requestId, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        actorUserId: {type: [string, 'null'], format: uuid}
+        action: {type: string}
+        entityType: {type: string}
+        entityId: {type: string}
+        before: {type: [object, 'null']}
+        after: {type: [object, 'null']}
+        requestId: {type: string}
+        createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+    AuditLogResponse:
+      type: object
+      required: [data]
+      properties: {data: {$ref: '#/components/schemas/AuditLog'}}
+    AuditLogPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {type: array, items: {$ref: '#/components/schemas/AuditLog'}}
+        meta:
+          type: object
+          required: [nextCursor]
+          properties: {nextCursor: {type: [string, 'null']}}
     MembershipStatus:
       type: string
       enum: [INVITED, ACTIVE, INACTIVE]
@@ -1557,9 +1814,18 @@ components:
         phone: {type: string, minLength: 8, maxLength: 30}
         email: {type: [string, 'null'], format: email}
         notes: {type: [string, 'null'], maxLength: 2000}
+    UpdateCustomerRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 150}
+        phone: {type: string, minLength: 8, maxLength: 30}
+        email: {type: [string, 'null'], format: email}
+        notes: {type: [string, 'null'], maxLength: 2000}
     Customer:
       type: object
-      required: [id, name, phone, createdAt]
+      required: [id, name, phone, createdAt, updatedAt]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         name: {type: string}
@@ -1567,6 +1833,7 @@ components:
         email: {type: [string, 'null']}
         notes: {type: [string, 'null']}
         createdAt: {$ref: '#/components/schemas/IsoDateTime'}
+        updatedAt: {$ref: '#/components/schemas/IsoDateTime'}
     CustomerResponse:
       type: object
       required: [data]
@@ -1594,6 +1861,18 @@ components:
         serial: {type: [string, 'null'], maxLength: 100}
         imei: {type: [string, 'null'], maxLength: 32}
         notes: {type: [string, 'null'], maxLength: 2000}
+    UpdateDeviceRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        type: {$ref: '#/components/schemas/DeviceType'}
+        brand: {type: string, minLength: 1, maxLength: 100}
+        model: {type: string, minLength: 1, maxLength: 150}
+        color: {type: [string, 'null'], maxLength: 50}
+        serial: {type: [string, 'null'], maxLength: 100}
+        imei: {type: [string, 'null'], maxLength: 32}
+        notes: {type: [string, 'null'], maxLength: 2000}
     Device:
       type: object
       required: [id, customerId, type, brand, model]
@@ -1606,6 +1885,8 @@ components:
         color: {type: [string, 'null']}
         serialMasked: {type: [string, 'null']}
         imeiMasked: {type: [string, 'null']}
+        notes: {type: [string, 'null']}
+        updatedAt: {$ref: '#/components/schemas/IsoDateTime'}
     DeviceResponse:
       type: object
       required: [data]
@@ -1795,6 +2076,18 @@ components:
             mediaAssetId: {$ref: '#/components/schemas/Uuid'}
             uploadUrl: {type: string, format: uri}
             expiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+    DownloadMediaResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [downloadUrl, expiresAt, mimeType, originalName]
+          properties:
+            downloadUrl: {type: string, format: uri}
+            expiresAt: {$ref: '#/components/schemas/IsoDateTime'}
+            mimeType: {type: string}
+            originalName: {type: string}
     TransitionRepairOrderRequest:
       type: object
       additionalProperties: false
@@ -2646,7 +2939,13 @@ components:
             status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, REJECTED]}
             promptVersion: {type: string}
             schemaVersion: {type: string}
-            output: {type: [object, 'null']}
+            output:
+              oneOf:
+                - {$ref: '#/components/schemas/IntakeDraftOutput'}
+                - {$ref: '#/components/schemas/DeviceOcrOutput'}
+                - {$ref: '#/components/schemas/CustomerSummaryOutput'}
+                - {$ref: '#/components/schemas/ChecklistSuggestionOutput'}
+                - {type: [object, 'null']}
             confidence: {type: [number, 'null'], minimum: 0, maximum: 1}
             errorCode: {type: [string, 'null']}
             review:

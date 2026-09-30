@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { NotificationOperationsApi } from "@/lib/api/intake-api";
 import type {
   CurrentUser,
@@ -12,7 +13,7 @@ import type {
 } from "@/lib/api/types";
 
 function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString("vi-VN") : "—";
+  return formatShopDateTime(value);
 }
 
 function statusLabel(status: NotificationOperation["status"]): string {

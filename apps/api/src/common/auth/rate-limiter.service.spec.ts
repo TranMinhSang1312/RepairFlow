@@ -1,19 +1,28 @@
 import { HttpStatus } from "@nestjs/common";
-import { describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { afterAll, describe, expect, it } from "vitest";
 
+import { PrismaService } from "../../infra/database/prisma.service.js";
 import { ApiException } from "../api-exception.js";
 import { RateLimiterService } from "./rate-limiter.service.js";
 
 describe("RateLimiterService", () => {
-  it("rejects calls after a policy is exhausted", () => {
-    const limiter = new RateLimiterService();
-    const policy = { limit: 2, windowMs: 60_000 };
+  const prisma = new PrismaService();
+  const limiter = new RateLimiterService(prisma);
 
-    limiter.assertAllowed("test-key", policy);
-    limiter.assertAllowed("test-key", policy);
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("rejects calls after a policy is exhausted", async () => {
+    const policy = { limit: 2, windowMs: 60_000 };
+    const key = `test-key:${randomUUID()}`;
+
+    await limiter.assertAllowed(key, policy);
+    await limiter.assertAllowed(key, policy);
 
     try {
-      limiter.assertAllowed("test-key", policy);
+      await limiter.assertAllowed(key, policy);
       throw new Error("expected the rate limit to reject");
     } catch (error) {
       expect(error).toBeInstanceOf(ApiException);

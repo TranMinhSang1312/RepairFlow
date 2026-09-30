@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RepairFlowApiError } from "@/lib/api/errors";
+import {
+  formatShopDateTime,
+  formatShopDateTimeLocal,
+  parseShopDateTimeLocal,
+} from "@/lib/datetime";
 import type { RepairOrderWorkspaceApi, UploadProgress } from "@/lib/api/intake-api";
 import type {
   CompleteHandoverInput,
@@ -66,12 +71,6 @@ function money(value: number): string {
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-function dateTime(value: string | null): string {
-  if (!value) return "Chưa có";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Không xác định" : date.toLocaleString("vi-VN");
 }
 
 function parseMoney(value: string): number | null {
@@ -277,15 +276,15 @@ export function HandoverPanel({ api, membership, order, shopId, onReload }: Hand
     }
     let warranty: CompleteHandoverInput["warranty"] = null;
     if (repaired) {
-      const end = new Date(warrantyEndsAt);
-      if (!warrantyEndsAt || Number.isNaN(end.getTime()) || end.getTime() <= Date.now()) {
+      const end = parseShopDateTimeLocal(warrantyEndsAt, membership.timezone);
+      if (!end || end.getTime() <= Date.now()) {
         errors.warrantyEndsAt = "Thời hạn bảo hành phải sau thời điểm bàn giao.";
       }
       if (!warrantyTerms.trim()) errors.warrantyTerms = "Vui lòng nhập điều khoản bảo hành.";
       if (warrantyTerms.trim().length > 10_000) {
         errors.warrantyTerms = "Điều khoản bảo hành tối đa 10.000 ký tự.";
       }
-      if (!errors.warrantyEndsAt && !errors.warrantyTerms) {
+      if (end && !errors.warrantyEndsAt && !errors.warrantyTerms) {
         warranty = { endsAt: end.toISOString(), terms: warrantyTerms.trim() };
       }
     }
@@ -448,7 +447,9 @@ export function HandoverPanel({ api, membership, order, shopId, onReload }: Hand
                 </div>
                 <div>
                   <span>{payment.reference || "Không có mã tham chiếu"}</span>
-                  <time dateTime={payment.receivedAt}>{dateTime(payment.receivedAt)}</time>
+                  <time dateTime={payment.receivedAt}>
+                    {formatShopDateTime(payment.receivedAt, membership.timezone)}
+                  </time>
                 </div>
               </li>
             ))}
@@ -552,7 +553,7 @@ export function HandoverPanel({ api, membership, order, shopId, onReload }: Hand
               </div>
               <div>
                 <dt>Thời điểm</dt>
-                <dd>{dateTime(order.handover.handedOverAt)}</dd>
+                <dd>{formatShopDateTime(order.handover.handedOverAt, membership.timezone)}</dd>
               </div>
               <div>
                 <dt>Thanh toán</dt>
@@ -568,7 +569,8 @@ export function HandoverPanel({ api, membership, order, shopId, onReload }: Hand
             <div className="warranty-readonly">
               <h3>Bảo hành đã ghi nhận</h3>
               <p>
-                {dateTime(order.warranty.startsAt)} – {dateTime(order.warranty.endsAt)}
+                {formatShopDateTime(order.warranty.startsAt, membership.timezone)} –{" "}
+                {formatShopDateTime(order.warranty.endsAt, membership.timezone)}
               </p>
               <p>{order.warranty.terms}</p>
             </div>
@@ -579,8 +581,8 @@ export function HandoverPanel({ api, membership, order, shopId, onReload }: Hand
               <div>
                 <strong>Liên kết theo dõi dành cho khách hàng</strong>
                 <small>
-                  Khả dụng đến {dateTime(tracking.expiresAt)}. URL không được hiển thị trên màn
-                  hình.
+                  Khả dụng đến {formatShopDateTime(tracking.expiresAt, membership.timezone)}. URL
+                  không được hiển thị trên màn hình.
                 </small>
               </div>
               <button
@@ -723,7 +725,7 @@ export function HandoverPanel({ api, membership, order, shopId, onReload }: Hand
                       fieldErrors.warrantyEndsAt ? "handover-warranty-end-error" : undefined
                     }
                     aria-invalid={Boolean(fieldErrors.warrantyEndsAt)}
-                    min={new Date().toISOString().slice(0, 16)}
+                    min={formatShopDateTimeLocal(new Date(), membership.timezone)}
                     onChange={(event) => {
                       setWarrantyEndsAt(event.target.value);
                       resetHandoverCommand();

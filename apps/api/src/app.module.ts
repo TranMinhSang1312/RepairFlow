@@ -22,6 +22,8 @@ import { WarrantiesModule } from "./modules/warranties/warranties.module.js";
 import { StaffMembershipsModule } from "./modules/staff-memberships/staff-memberships.module.js";
 import { NotificationOperationsModule } from "./modules/notification-operations/notification-operations.module.js";
 import { AiModule } from "./modules/ai/ai.module.js";
+import { ShopSettingsModule } from "./modules/shop-settings/shop-settings.module.js";
+import { AuditLogsModule } from "./modules/audit-logs/audit-logs.module.js";
 
 loadWorkspaceEnvironment();
 const environment = parseApiEnvironment(process.env);
@@ -42,6 +44,8 @@ const environment = parseApiEnvironment(process.env);
     StaffMembershipsModule,
     NotificationOperationsModule,
     AiModule,
+    ShopSettingsModule,
+    AuditLogsModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: environment.LOG_LEVEL,

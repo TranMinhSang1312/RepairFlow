@@ -111,6 +111,22 @@ export function ProtectedStaffLayout({ children }: { children: ReactNode }) {
           )}
           {membership.role === "OWNER" && (
             <Link
+              aria-current={pathname.startsWith("/settings/audit") ? "page" : undefined}
+              href={`/settings/audit?shopId=${encodeURIComponent(membership.shopId)}`}
+            >
+              Lịch sử
+            </Link>
+          )}
+          {membership.role === "OWNER" && (
+            <Link
+              aria-current={pathname.startsWith("/settings/shop") ? "page" : undefined}
+              href={`/settings/shop?shopId=${encodeURIComponent(membership.shopId)}`}
+            >
+              Cửa hàng
+            </Link>
+          )}
+          {membership.role === "OWNER" && (
+            <Link
               aria-current={pathname.startsWith("/settings/ai") ? "page" : undefined}
               href={`/settings/ai?shopId=${encodeURIComponent(membership.shopId)}`}
             >

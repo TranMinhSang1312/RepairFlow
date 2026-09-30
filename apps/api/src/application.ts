@@ -6,6 +6,7 @@ import {
   type ValidationError,
 } from "@nestjs/common";
 import type { ErrorDetail } from "@repairflow/contracts";
+import { parseApiEnvironment } from "@repairflow/config";
 import { Logger } from "nestjs-pino";
 
 import { ApiException } from "./common/api-exception.js";
@@ -25,6 +26,11 @@ function validationDetails(errors: ValidationError[], parent = ""): ErrorDetail[
 }
 
 export function configureApplication(app: INestApplication): INestApplication {
+  const environment = parseApiEnvironment(process.env);
+  const express = app.getHttpAdapter().getInstance() as {
+    set(name: string, value: number): void;
+  };
+  express.set("trust proxy", environment.API_TRUST_PROXY_HOPS);
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix("api/v1", {
     exclude: [{ path: "public/v1/{*path}", method: RequestMethod.ALL }],

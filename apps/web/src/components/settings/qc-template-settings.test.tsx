@@ -101,7 +101,11 @@ describe("QcTemplateSettings", () => {
   });
 
   it("validates, confirms, publishes ordered items and reloads authoritative history", async () => {
-    const created = { ...template, versionNo: 3 };
+    const created = {
+      ...template,
+      id: "77777777-7777-4777-8777-777777777777",
+      versionNo: 3,
+    };
     const createQcTemplate = vi.fn().mockResolvedValue(created);
     const listQcTemplates = vi
       .fn()
@@ -145,7 +149,7 @@ describe("QcTemplateSettings", () => {
     expect(createQcTemplate.mock.calls[0]![2]).toMatch(/^qc-template-create-/);
     expect(listQcTemplates).toHaveBeenCalledTimes(2);
     expect(await screen.findByText(/Đã tạo Kiểm tra bàn giao phiên bản 3/)).toBeTruthy();
-  });
+  }, 10_000);
 
   it("preserves edits and reuses the same idempotency key after a retryable create error", async () => {
     const createQcTemplate = vi

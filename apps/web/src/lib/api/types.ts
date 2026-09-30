@@ -4,6 +4,9 @@ export type MembershipStatus = "INVITED" | "ACTIVE" | "INACTIVE";
 export interface BranchSummary {
   id: string;
   name: string;
+  address?: string | null;
+  isActive?: boolean;
+  lockVersion?: number;
 }
 
 export interface Membership {
@@ -256,6 +259,7 @@ export interface Customer {
   email: string | null;
   notes: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type DeviceType = "PHONE" | "LAPTOP" | "TABLET" | "OTHER";
@@ -269,6 +273,44 @@ export interface Device {
   color: string | null;
   serialMasked: string | null;
   imeiMasked: string | null;
+  notes?: string | null;
+  updatedAt?: string;
+}
+
+export interface ShopSettings {
+  id: string;
+  name: string;
+  timezone: string;
+  contactPhone: string | null;
+  orderCodePrefix: string;
+  intakePhotoMinimum: number;
+  defaultQuoteExpiryHours: number;
+  defaultWarrantyTerms: string | null;
+  lockVersion: number;
+  branches: Array<{
+    id: string;
+    name: string;
+    address: string | null;
+    isActive: boolean;
+    lockVersion: number;
+  }>;
+}
+
+export interface AuditLog {
+  id: string;
+  actorUserId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  requestId: string;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  data: AuditLog[];
+  meta: { nextCursor: string | null };
 }
 
 export interface NewCustomer {
@@ -370,6 +412,13 @@ export interface IntakeMediaView {
   mimeType: string;
   byteSize: number;
   uploadedAt: string | null;
+}
+
+export interface PrivateMediaDownload {
+  downloadUrl: string;
+  expiresAt: string;
+  mimeType: string;
+  originalName: string;
 }
 
 export interface RepairOrderTimelineEvent {
@@ -801,6 +850,7 @@ export interface PublicTimelineEvent {
 export interface PublicOrder {
   shopName: string;
   shopContact: string | null;
+  shopTimezone?: string;
   orderCode: string;
   deviceLabel: string;
   status: RepairOrderStatus;

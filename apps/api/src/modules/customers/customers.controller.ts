@@ -1,6 +1,17 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs runtime constructors for DI and validation metadata. */
 
-import { Body, Controller, Get, Headers, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 
 import { AccessTokenGuard } from "../../common/auth/access-token.guard.js";
 import { Capability } from "../../common/permissions/capability.js";
@@ -9,7 +20,7 @@ import { RequireCapabilities } from "../../common/permissions/require-capabiliti
 import { CurrentTenant } from "../../common/tenant/current-tenant.decorator.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
 import { TenantGuard } from "../../common/tenant/tenant.guard.js";
-import { CreateCustomerDto, ListCustomersQueryDto } from "./customer.dto.js";
+import { CreateCustomerDto, ListCustomersQueryDto, UpdateCustomerDto } from "./customer.dto.js";
 import { CustomersService } from "./customers.service.js";
 
 @Controller("customers")
@@ -31,5 +42,21 @@ export class CustomersController {
     @Body() dto: CreateCustomerDto,
   ) {
     return this.customersService.create(tenant, dto, idempotencyKey);
+  }
+
+  @Patch(":customerId")
+  @RequireCapabilities(Capability.CUSTOMER_WRITE)
+  update(
+    @CurrentTenant() tenant: TenantContext,
+    @Param("customerId") customerId: string,
+    @Body() dto: UpdateCustomerDto,
+  ) {
+    return this.customersService.update(tenant, customerId, dto);
+  }
+
+  @Delete(":customerId")
+  @RequireCapabilities(Capability.CUSTOMER_WRITE)
+  archive(@CurrentTenant() tenant: TenantContext, @Param("customerId") customerId: string) {
+    return this.customersService.archive(tenant, customerId);
   }
 }

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { PublicStaffInvitation } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-provider";
 
@@ -127,7 +128,7 @@ export function StaffInvitationAcceptance({ token }: { token: string }) {
           </div>
           <div>
             <dt>Hết hạn</dt>
-            <dd>{new Date(invitation.expiresAt).toLocaleString("vi-VN")}</dd>
+            <dd>{formatShopDateTime(invitation.expiresAt)}</dd>
           </div>
         </dl>
         {error && (

@@ -4,9 +4,16 @@ packages:
 
 allowBuilds:
   "@prisma/engines": true
+  core-js: true
   esbuild: true
   prisma: true
+  protobufjs: true
 
 minimumReleaseAgeExclude:
   - dotenv@18.0.0
   - prettier@3.9.8
+  - mysql2@3.24.5
+
+overrides:
+  deepmerge-ts: 8.0.0
+  mysql2: 3.24.5

@@ -1,12 +1,17 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports -- Nest needs constructor tokens at runtime for DI. */
 
 import { HttpStatus, Injectable } from "@nestjs/common";
-import type { Customer } from "@prisma/client";
+import { Prisma, type Customer } from "@prisma/client";
 
 import { ApiException } from "../../common/api-exception.js";
 import { IdempotencyService } from "../../common/idempotency/idempotency.service.js";
 import type { TenantContext } from "../../common/tenant/tenant-context.js";
-import type { CreateCustomerDto, ListCustomersQueryDto } from "./customer.dto.js";
+import { PrismaService } from "../../infra/database/prisma.service.js";
+import type {
+  CreateCustomerDto,
+  ListCustomersQueryDto,
+  UpdateCustomerDto,
+} from "./customer.dto.js";
 import type { CustomerCursor } from "./customers.repository.js";
 import { CustomersRepository } from "./customers.repository.js";
 import {
@@ -35,6 +40,7 @@ export class CustomersService {
   constructor(
     private readonly repository: CustomersRepository,
     private readonly idempotency: IdempotencyService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async list(tenant: TenantContext, query: ListCustomersQueryDto): Promise<CustomerListResponse> {
@@ -95,6 +101,112 @@ export class CustomersService {
       throw this.customerNotFound();
     }
     return customer;
+  }
+
+  async update(
+    tenant: TenantContext,
+    customerId: string,
+    dto: UpdateCustomerDto,
+  ): Promise<CustomerResponse> {
+    const id = this.validatedId(customerId);
+    if (Object.values(dto).every((value) => value === undefined)) {
+      throw new ApiException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        "VALIDATION_FAILED",
+        "At least one change is required.",
+      );
+    }
+    const phoneNormalized = dto.phone === undefined ? undefined : normalizePhone(dto.phone);
+    if (phoneNormalized !== undefined && phoneNormalized.replace(/\D/g, "").length < 8) {
+      throw new ApiException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        "VALIDATION_FAILED",
+        "One or more input fields are invalid.",
+        [{ field: "phone", code: "INVALID_PHONE", message: "phone is invalid" }],
+      );
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.customer.findFirst({
+        where: { id, shopId: tenant.shopId, archivedAt: null },
+      });
+      if (!current) throw this.customerNotFound();
+      const data: Prisma.CustomerUpdateInput = {};
+      if (dto.name !== undefined) data.name = dto.name;
+      if (dto.phone !== undefined && phoneNormalized !== undefined) {
+        data.phoneRaw = dto.phone;
+        data.phoneNormalized = phoneNormalized;
+      }
+      if (dto.email !== undefined) data.email = dto.email?.toLowerCase() || null;
+      if (dto.notes !== undefined) data.notes = dto.notes || null;
+      const updated = await tx.customer.update({ where: { id }, data });
+      await this.audit(
+        tx,
+        tenant,
+        "customer.updated",
+        id,
+        this.auditView(current),
+        this.auditView(updated),
+      );
+      return { data: toCustomerView(updated) };
+    });
+  }
+
+  async archive(tenant: TenantContext, customerId: string): Promise<CustomerResponse> {
+    const id = this.validatedId(customerId);
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.customer.findFirst({
+        where: { id, shopId: tenant.shopId, archivedAt: null },
+      });
+      if (!current) throw this.customerNotFound();
+      const archivedAt = new Date();
+      await tx.device.updateMany({
+        where: { shopId: tenant.shopId, customerId: id, archivedAt: null },
+        data: { archivedAt },
+      });
+      const updated = await tx.customer.update({ where: { id }, data: { archivedAt } });
+      await this.audit(tx, tenant, "customer.archived", id, this.auditView(current), {
+        ...this.auditView(updated),
+        archivedAt: archivedAt.toISOString(),
+      });
+      return { data: toCustomerView(updated) };
+    });
+  }
+
+  private validatedId(value: string): string {
+    if (!UUID_PATTERN.test(value)) throw this.customerNotFound();
+    return value.toLowerCase();
+  }
+
+  private audit(
+    tx: Prisma.TransactionClient,
+    tenant: TenantContext,
+    action: string,
+    entityId: string,
+    beforeData: Prisma.InputJsonValue,
+    afterData: Prisma.InputJsonValue,
+  ) {
+    return tx.auditLog.create({
+      data: {
+        shopId: tenant.shopId,
+        actorUserId: tenant.userId,
+        action,
+        entityType: "CUSTOMER",
+        entityId,
+        beforeData,
+        afterData,
+        requestId: tenant.requestId,
+      },
+    });
+  }
+
+  private auditView(customer: Customer) {
+    return {
+      name: customer.name,
+      phone: customer.phoneRaw,
+      email: customer.email,
+      notes: customer.notes,
+      archivedAt: customer.archivedAt?.toISOString() ?? null,
+    };
   }
 
   private encodeCursor(customer: Customer): string {

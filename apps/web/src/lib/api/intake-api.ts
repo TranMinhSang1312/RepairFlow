@@ -63,6 +63,9 @@ import type {
   AiSettingsView,
   AiCapability,
   AiAnalyticsPage,
+  ShopSettings,
+  AuditLogPage,
+  PrivateMediaDownload,
 } from "./types";
 
 interface DataResponse<T> {
@@ -81,8 +84,21 @@ export interface IntakeApi {
   restoreSession(): Promise<AuthData>;
   searchCustomers(shopId: string, query: string): Promise<Customer[]>;
   createCustomer(shopId: string, input: NewCustomer, idempotencyKey: string): Promise<Customer>;
+  updateCustomer?(
+    shopId: string,
+    customerId: string,
+    input: Partial<NewCustomer>,
+  ): Promise<Customer>;
+  archiveCustomer?(shopId: string, customerId: string): Promise<Customer>;
   listDevices(shopId: string, customerId: string): Promise<Device[]>;
   createDevice(shopId: string, customerId: string, input: NewDevice): Promise<Device>;
+  updateDevice?(
+    shopId: string,
+    customerId: string,
+    deviceId: string,
+    input: Partial<NewDevice>,
+  ): Promise<Device>;
+  archiveDevice?(shopId: string, customerId: string, deviceId: string): Promise<Device>;
   uploadIntakeMedia(
     shopId: string,
     file: File,
@@ -133,6 +149,11 @@ export interface RepairOrderReadApi {
 }
 
 export interface RepairOrderWorkspaceApi extends RepairOrderReadApi {
+  downloadRepairOrderMedia?(
+    shopId: string,
+    repairOrderId: string,
+    mediaAssetId: string,
+  ): Promise<PrivateMediaDownload>;
   uploadIntakeMedia(
     shopId: string,
     file: File,
@@ -359,6 +380,27 @@ export interface AiSettingsApi {
   ): Promise<AiAnalyticsPage>;
 }
 
+export interface ShopSettingsApi {
+  getShopSettings(shopId: string): Promise<ShopSettings>;
+  updateShopSettings(shopId: string, input: Record<string, unknown>): Promise<ShopSettings>;
+  createBranch(
+    shopId: string,
+    input: { name: string; address?: string | null },
+  ): Promise<ShopSettings["branches"][number]>;
+  updateBranch(
+    shopId: string,
+    branchId: string,
+    input: Record<string, unknown>,
+  ): Promise<ShopSettings["branches"][number]>;
+}
+
+export interface AuditLogApi {
+  listAuditLogs(
+    shopId: string,
+    filters?: { action?: string; entityType?: string; cursor?: string },
+  ): Promise<AuditLogPage>;
+}
+
 export interface SessionCallbacks {
   onSession?(auth: AuthData): void;
   onSessionExpired?(): void;
@@ -377,7 +419,9 @@ export class BrowserIntakeApi
     AiCustomerSummaryApi,
     StaffMembershipApi,
     NotificationOperationsApi,
-    AiSettingsApi
+    AiSettingsApi,
+    ShopSettingsApi,
+    AuditLogApi
 {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthData> | null = null;
@@ -668,6 +712,26 @@ export class BrowserIntakeApi
     return response.data;
   }
 
+  async updateCustomer(
+    shopId: string,
+    customerId: string,
+    input: Partial<NewCustomer>,
+  ): Promise<Customer> {
+    const response = await this.request<DataResponse<Customer>>(
+      `/customers/${encodeURIComponent(customerId)}`,
+      { method: "PATCH", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async archiveCustomer(shopId: string, customerId: string): Promise<Customer> {
+    const response = await this.request<DataResponse<Customer>>(
+      `/customers/${encodeURIComponent(customerId)}`,
+      { method: "DELETE", shopId },
+    );
+    return response.data;
+  }
+
   async listDevices(shopId: string, customerId: string): Promise<Device[]> {
     const response = await this.request<DataResponse<Device[]>>(
       `/customers/${encodeURIComponent(customerId)}/devices`,
@@ -682,6 +746,69 @@ export class BrowserIntakeApi
       { method: "POST", shopId, body: JSON.stringify(input) },
     );
     return response.data;
+  }
+
+  async updateDevice(
+    shopId: string,
+    customerId: string,
+    deviceId: string,
+    input: Partial<NewDevice>,
+  ): Promise<Device> {
+    const response = await this.request<DataResponse<Device>>(
+      `/customers/${encodeURIComponent(customerId)}/devices/${encodeURIComponent(deviceId)}`,
+      { method: "PATCH", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async archiveDevice(shopId: string, customerId: string, deviceId: string): Promise<Device> {
+    const response = await this.request<DataResponse<Device>>(
+      `/customers/${encodeURIComponent(customerId)}/devices/${encodeURIComponent(deviceId)}`,
+      { method: "DELETE", shopId },
+    );
+    return response.data;
+  }
+
+  async getShopSettings(shopId: string): Promise<ShopSettings> {
+    const response = await this.request<DataResponse<ShopSettings>>("/settings/shop", { shopId });
+    return response.data;
+  }
+
+  async updateShopSettings(shopId: string, input: Record<string, unknown>): Promise<ShopSettings> {
+    const response = await this.request<DataResponse<ShopSettings>>("/settings/shop", {
+      method: "PATCH",
+      shopId,
+      body: JSON.stringify(input),
+    });
+    return response.data;
+  }
+
+  async createBranch(shopId: string, input: { name: string; address?: string | null }) {
+    const response = await this.request<DataResponse<ShopSettings["branches"][number]>>(
+      "/settings/shop/branches",
+      { method: "POST", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async updateBranch(shopId: string, branchId: string, input: Record<string, unknown>) {
+    const response = await this.request<DataResponse<ShopSettings["branches"][number]>>(
+      `/settings/shop/branches/${encodeURIComponent(branchId)}`,
+      { method: "PATCH", shopId, body: JSON.stringify(input) },
+    );
+    return response.data;
+  }
+
+  async listAuditLogs(
+    shopId: string,
+    filters: { action?: string; entityType?: string; cursor?: string } = {},
+  ) {
+    const params = new URLSearchParams();
+    if (filters.action) params.set("action", filters.action);
+    if (filters.entityType) params.set("entityType", filters.entityType);
+    if (filters.cursor) params.set("cursor", filters.cursor);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.request<AuditLogPage>(`/operations/audit-logs${suffix}`, { shopId });
   }
 
   async uploadIntakeMedia(
@@ -806,6 +933,18 @@ export class BrowserIntakeApi
   async getRepairOrder(shopId: string, repairOrderId: string): Promise<RepairOrderDetail> {
     const response = await this.request<DataResponse<RepairOrderDetail>>(
       `/repair-orders/${encodeURIComponent(repairOrderId)}`,
+      { shopId },
+    );
+    return response.data;
+  }
+
+  async downloadRepairOrderMedia(
+    shopId: string,
+    repairOrderId: string,
+    mediaAssetId: string,
+  ): Promise<PrivateMediaDownload> {
+    const response = await this.request<DataResponse<PrivateMediaDownload>>(
+      `/repair-orders/${encodeURIComponent(repairOrderId)}/media/${encodeURIComponent(mediaAssetId)}/download`,
       { shopId },
     );
     return response.data;

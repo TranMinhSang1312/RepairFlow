@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RepairFlowApiError, safeErrorMessage } from "@/lib/api/errors";
+import { formatShopDateTime } from "@/lib/datetime";
 import type { RepairOrderWorkspaceApi } from "@/lib/api/intake-api";
 import type { CreateQcTemplateInput, CurrentUser, Membership, QcTemplate } from "@/lib/api/types";
 
@@ -44,8 +45,7 @@ function activeMemberships(user: CurrentUser): Membership[] {
 }
 
 function dateTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Không xác định" : date.toLocaleString("vi-VN");
+  return formatShopDateTime(value);
 }
 
 function focusableElements(container: HTMLElement): HTMLElement[] {

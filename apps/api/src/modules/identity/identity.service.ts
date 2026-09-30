@@ -63,7 +63,7 @@ export class IdentityService {
   ) {}
 
   async registerOwner(dto: RegisterOwnerDto, request: Request): Promise<IssuedAuth> {
-    this.rateLimiter.assertAllowed(`register:${clientIp(request)}`, REGISTER_POLICY);
+    await this.rateLimiter.assertAllowed(`register:${clientIp(request)}`, REGISTER_POLICY);
     const email = normalizedEmail(dto.email);
     const passwordHash = await this.passwordHasher.hash(dto.password);
     const shopSlug = `${slugBase(dto.shopName)}-${randomUUID().replaceAll("-", "")}`;
@@ -150,8 +150,8 @@ export class IdentityService {
   async login(dto: LoginDto, request: Request): Promise<IssuedAuth> {
     const email = normalizedEmail(dto.email);
     const ip = clientIp(request);
-    this.rateLimiter.assertAllowed(`login-ip:${ip}`, LOGIN_IP_POLICY);
-    this.rateLimiter.assertAllowed(
+    await this.rateLimiter.assertAllowed(`login-ip:${ip}`, LOGIN_IP_POLICY);
+    await this.rateLimiter.assertAllowed(
       `login-account:${ip}:${this.hashPrivateValue(email)}`,
       LOGIN_POLICY,
     );
@@ -171,7 +171,7 @@ export class IdentityService {
   }
 
   async refresh(refreshToken: string | null, request: Request): Promise<IssuedAuth> {
-    this.rateLimiter.assertAllowed(`refresh:${clientIp(request)}`, REFRESH_POLICY);
+    await this.rateLimiter.assertAllowed(`refresh:${clientIp(request)}`, REFRESH_POLICY);
     if (!refreshToken) {
       throw this.sessionExpired();
     }

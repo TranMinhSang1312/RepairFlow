@@ -58,8 +58,8 @@ export class PublicPortalService {
     private readonly stateMachine: RepairOrderStateMachineService,
   ) {}
 
-  getOrder(rawToken: string, request: Request): Promise<PublicOrderResponse> {
-    this.assertRateLimit("read", rawToken, request, PUBLIC_READ_POLICY);
+  async getOrder(rawToken: string, request: Request): Promise<PublicOrderResponse> {
+    await this.assertRateLimit("read", rawToken, request, PUBLIC_READ_POLICY);
     this.assertTokenShape(rawToken);
     const tokenHash = this.tokens.hash(rawToken);
 
@@ -77,7 +77,7 @@ export class PublicPortalService {
     idempotencyKey: string | undefined,
     request: Request,
   ): Promise<QuoteDecisionResponse> {
-    this.assertRateLimit("decision", rawToken, request, PUBLIC_DECISION_POLICY);
+    await this.assertRateLimit("decision", rawToken, request, PUBLIC_DECISION_POLICY);
     this.assertTokenShape(rawToken);
     const tokenHash = this.tokens.hash(rawToken);
     // This lookup only discovers the trusted tenant for idempotency scoping. The full record is
@@ -456,6 +456,7 @@ export class PublicPortalService {
       data: {
         shopName: record.repairOrder.shop.name,
         shopContact: record.repairOrder.shop.contactPhone,
+        shopTimezone: record.repairOrder.shop.timezone,
         orderCode: record.repairOrder.code,
         deviceLabel: this.deviceLabel(record.repairOrder.deviceSnapshot),
         status: record.repairOrder.status,
@@ -560,14 +561,14 @@ export class PublicPortalService {
       : {};
   }
 
-  private assertRateLimit(
+  private async assertRateLimit(
     operation: string,
     rawToken: string,
     request: Request,
     policy: { limit: number; windowMs: number },
-  ): void {
+  ): Promise<void> {
     const key = this.tokens.rateLimitKey(rawToken, this.clientIp(request));
-    this.rateLimiter.assertAllowed(`public-${operation}:${key}`, policy);
+    await this.rateLimiter.assertAllowed(`public-${operation}:${key}`, policy);
   }
 
   private assertTokenShape(rawToken: string): void {

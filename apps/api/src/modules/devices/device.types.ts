@@ -9,6 +9,8 @@ export interface DeviceView {
   color: string | null;
   serialMasked: string | null;
   imeiMasked: string | null;
+  notes: string | null;
+  updatedAt: string;
 }
 
 export interface DeviceResponse {
@@ -32,5 +34,7 @@ export function toDeviceView(device: Device): DeviceView {
     color: device.color,
     serialMasked: masked(device.serialNormalized),
     imeiMasked: masked(device.imeiNormalized),
+    notes: device.notes,
+    updatedAt: device.updatedAt.toISOString(),
   };
 }

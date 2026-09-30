@@ -31,8 +31,10 @@ async function proxy(request: Request): Promise<Response> {
     environment.NEXT_PUBLIC_API_URL,
   );
   const headers = new Headers({ Accept: "application/json", [TOKEN_HEADER]: token });
-  const contentType = request.headers.get("content-type");
-  if (contentType) headers.set("content-type", contentType);
+  for (const name of ["content-type", "user-agent", "x-forwarded-for", "x-real-ip"]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
   const upstream = await fetch(upstreamUrl, {
     method: request.method,
     headers,
